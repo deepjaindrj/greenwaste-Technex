@@ -31,8 +31,8 @@ export default function Leaderboard() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 stagger-fade-in">
       <div>
-        <h1 className="text-2xl font-display font-semibold text-foreground">Leaderboard</h1>
-        <p className="text-sm text-muted-foreground">Compete with your community for a greener tomorrow</p>
+        <h1 className="text-2xl font-display font-semibold text-foreground">Carbon Earners</h1>
+        <p className="text-sm text-muted-foreground">Top carbon credit earners in your city</p>
       </div>
 
       {/* Main Tabs */}

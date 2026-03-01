@@ -1,31 +1,47 @@
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Camera, Leaf, TrendingUp, Building, Briefcase,
-  Star, Trophy, FileText, MapPin, Settings
+  LayoutDashboard, Camera, Leaf, TrendingUp, Building2,
+  Trophy, FileText, MapPin, Settings, PackageCheck, ShoppingBag, Wallet, Briefcase
 } from "lucide-react";
 
-const navSections = [
+const citizenNav = [
   {
     label: "MAIN",
     items: [
-      { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+      { title: "My Dashboard", icon: LayoutDashboard, path: "/dashboard" },
       { title: "Waste Scanner", icon: Camera, path: "/scan" },
-      { title: "Carbon Tracker", icon: Leaf, path: "/carbon" },
+      { title: "Request Pickup", icon: PackageCheck, path: "/request-pickup" },
     ],
   },
   {
-    label: "ANALYTICS",
+    label: "COLLECTION",
     items: [
-      { title: "Predictive AI", icon: TrendingUp, path: "/predict" },
-      { title: "Municipal Center", icon: Building, path: "/municipal" },
-      { title: "Business ESG", icon: Briefcase, path: "/business" },
+      { title: "Collection Tracker", icon: TrendingUp, path: "/collection" },
+      { title: "Carbon Wallet", icon: Wallet, path: "/carbon" },
     ],
   },
   {
     label: "COMMUNITY",
     items: [
-      { title: "Rewards", icon: Star, path: "/rewards" },
-      { title: "Leaderboard", icon: Trophy, path: "/leaderboard" },
+      { title: "Marketplace", icon: ShoppingBag, path: "/marketplace" },
+      { title: "Carbon Earners", icon: Trophy, path: "/leaderboard" },
+    ],
+  },
+];
+
+const municipalNav = [
+  {
+    label: "OPERATIONS",
+    items: [
+      { title: "Operations Center", icon: Building2, path: "/municipal" },
+      { title: "ESG & Carbon Market", icon: Briefcase, path: "/esg" },
+    ],
+  },
+  {
+    label: "INSIGHTS",
+    items: [
+      { title: "Analytics", icon: TrendingUp, path: "/analytics" },
       { title: "Reports", icon: FileText, path: "/reports" },
     ],
   },
@@ -33,6 +49,16 @@ const navSections = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const [portal, setPortal] = useState<'citizen' | 'municipal'>(
+    () => (localStorage.getItem('wasteos-portal') as 'citizen' | 'municipal') ?? 'citizen'
+  );
+
+  const handlePortalChange = (p: 'citizen' | 'municipal') => {
+    setPortal(p);
+    localStorage.setItem('wasteos-portal', p);
+  };
+
+  const navSections = portal === 'citizen' ? citizenNav : municipalNav;
 
   return (
     <aside className="flex flex-col w-60 h-screen bg-sidebar border-r border-sidebar-border shrink-0 overflow-y-auto">
@@ -46,6 +72,24 @@ export function AppSidebar() {
             <h1 className="font-display font-semibold text-base text-foreground leading-tight">WasteOS</h1>
             <p className="text-[10px] text-muted-foreground leading-tight">Waste Intelligence Platform</p>
           </div>
+        </div>
+      </div>
+
+      {/* Portal Toggle */}
+      <div className="px-3 pt-4 pb-2">
+        <div className="flex rounded-full bg-secondary p-0.5 text-xs">
+          <button
+            onClick={() => handlePortalChange('citizen')}
+            className={`flex-1 px-3 py-1.5 rounded-full transition-colors text-center ${portal === 'citizen' ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'}`}
+          >
+            Citizen
+          </button>
+          <button
+            onClick={() => handlePortalChange('municipal')}
+            className={`flex-1 px-3 py-1.5 rounded-full transition-colors text-center ${portal === 'municipal' ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'}`}
+          >
+            Municipal Corp
+          </button>
         </div>
       </div>
 
@@ -84,7 +128,7 @@ export function AppSidebar() {
         <div className="card-premium p-3 rounded-xl">
           <div className="flex items-center gap-2 text-xs">
             <MapPin className="w-3.5 h-3.5 text-primary" />
-            <span className="font-medium text-foreground">Mumbai, Maharashtra</span>
+            <span className="font-medium text-foreground">Indore, Madhya Pradesh</span>
           </div>
           <p className="mt-1 text-[10px] text-primary font-medium">Sustainability Score: 74</p>
         </div>

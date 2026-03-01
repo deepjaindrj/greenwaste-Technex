@@ -1,4 +1,4 @@
-import { ArrowRight, Leaf, Camera, Star, Play, MapPin, Brain, Trophy, Zap, Quote } from "lucide-react";
+import { ArrowRight, Leaf, Camera, Star, Play, MapPin, Brain, Trophy, Zap, Quote, Home, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const stats = [
@@ -16,9 +16,9 @@ const steps = [
 ];
 
 const testimonials = [
-  { quote: 'WasteOS transformed how our society handles waste. We went from 40% to 82% segregation in just 3 months.', name: 'Priya Sharma', role: 'Society President', city: 'Mumbai' },
-  { quote: 'The predictive AI helped us reduce overflow incidents by 60%. Our citizens love the rewards system.', name: 'Rajesh Gupta', role: 'Municipal Commissioner', city: 'Pune' },
-  { quote: 'Finally, a platform that makes sustainability measurable and fun. Our ESG scores improved significantly.', name: 'Anita Deshmukh', role: 'CSR Head, TechCorp', city: 'Bangalore' },
+  { quote: 'WasteOS transformed how our society handles waste. We went from 40% to 82% segregation in just 3 months.', name: 'Priya Sharma', role: 'Society President', city: 'Indore' },
+  { quote: 'The predictive AI helped us reduce overflow incidents by 60%. Our citizens love the rewards system.', name: 'Rajesh Gupta', role: 'Municipal Commissioner', city: 'Bhopal' },
+  { quote: 'Finally, a platform that makes sustainability measurable and fun. Our ESG scores improved significantly.', name: 'Anita Deshmukh', role: 'CSR Head, TechCorp', city: 'Ujjain' },
 ];
 
 export default function Landing() {
@@ -71,14 +71,29 @@ export default function Landing() {
             WasteOS tracks waste, carbon impact and recycling behaviour in real time — rewarding citizens and helping cities become truly sustainable.
           </p>
 
-          {/* CTAs */}
-          <div className="flex items-center justify-center gap-4 mb-8">
-            <button onClick={() => navigate('/dashboard')} className="btn-primary-gradient text-white px-10 py-4 rounded-full text-base font-semibold flex items-center gap-2">
-              Launch Dashboard <ArrowRight className="w-4 h-4" />
-            </button>
-            <button className="btn-secondary px-8 py-4 rounded-full text-base font-medium flex items-center gap-2">
-              <Play className="w-4 h-4" /> Watch Demo
-            </button>
+          {/* Portal Cards */}
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-8">
+            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => { localStorage.setItem('wasteos-portal', 'citizen'); navigate('/dashboard'); }}>
+              <div className="w-12 h-12 rounded-2xl bg-primary-glow flex items-center justify-center mb-4">
+                <Home className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="font-display font-semibold text-xl text-foreground mb-2">I'm a Citizen</h3>
+              <p className="text-sm text-muted-foreground mb-5">Request pickups, earn carbon credits, sell to brands</p>
+              <button className="btn-primary-gradient text-white px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center">
+                Enter Citizen Portal <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => { localStorage.setItem('wasteos-portal', 'municipal'); navigate('/municipal'); }}>
+              <div className="w-12 h-12 rounded-2xl bg-primary-glow flex items-center justify-center mb-4">
+                <Building2 className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="font-display font-semibold text-xl text-foreground mb-2">I'm a Municipal Corp</h3>
+              <p className="text-sm text-muted-foreground mb-5">Manage city waste, approve ESG buyers, track analytics</p>
+              <button className="btn-secondary px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center">
+                Enter Municipal Portal <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Social proof */}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { User, Bell, MapPin, Shield, Palette, Save } from "lucide-react";
+import LeafletMap from "@/components/LeafletMap";
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -66,7 +67,7 @@ export default function Settings() {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1.5">City</label>
                   <select className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20">
-                    <option>Mumbai</option><option>Delhi</option><option>Pune</option><option>Bangalore</option>
+                    <option>Indore</option><option>Bhopal</option><option>Ujjain</option><option>Jabalpur</option>
                   </select>
                 </div>
                 <div className="sm:col-span-2">
@@ -120,21 +121,21 @@ export default function Settings() {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1.5">City</label>
                   <select className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20">
-                    <option>Mumbai</option><option>Delhi</option><option>Pune</option><option>Bangalore</option><option>Chennai</option><option>Hyderabad</option>
+                    <option>Indore</option><option>Bhopal</option><option>Ujjain</option><option>Jabalpur</option><option>Gwalior</option><option>Rewa</option>
                   </select>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1.5">Zone / Ward</label>
                   <select className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20">
-                    <option>Zone 4 — Andheri</option><option>Zone 1 — Colaba</option><option>Zone 3 — Dadar</option>
+                    <option>Zone 4 — Vijay Nagar</option><option>Zone 1 — Sapna Sangeeta</option><option>Zone 3 — Rajwada</option>
                   </select>
                 </div>
               </div>
               <button className="btn-secondary px-5 py-2 rounded-full text-sm flex items-center gap-2">
                 <MapPin className="w-4 h-4" /> Auto-detect Location
               </button>
-              <div className="rounded-2xl bg-surface h-48 flex items-center justify-center">
-                <MapPin className="w-8 h-8 text-primary/30" />
+              <div className="rounded-2xl overflow-hidden h-48">
+                <LeafletMap center={[22.7196, 75.8577]} zoom={13} />
               </div>
             </div>
           )}

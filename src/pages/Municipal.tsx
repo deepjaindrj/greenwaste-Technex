@@ -1,6 +1,8 @@
-import { Trash2, CheckCircle, Truck, Cloud, RefreshCw, MapPin, AlertTriangle, Clock, Award, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { Trash2, CheckCircle, Truck, Cloud, RefreshCw, AlertTriangle, Clock, Award, TrendingUp } from "lucide-react";
+import LeafletMap from "@/components/LeafletMap";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
-import { municipalData, carbonData } from "@/lib/mockData";
+import { municipalData, carbonData, municipalPickupQueue } from "@/lib/mockData";
 
 const kpiIcons: Record<string, React.ElementType> = { Trash2, CheckCircle, Truck, Cloud, RefreshCw };
 const alertStyles: Record<string, { border: string; icon: React.ElementType }> = {
@@ -11,7 +13,23 @@ const alertStyles: Record<string, { border: string; icon: React.ElementType }> =
 };
 const statusColors: Record<string, string> = { Active: 'bg-primary-glow text-primary', Delayed: 'bg-warning/10 text-warning', Idle: 'bg-secondary text-muted-foreground' };
 
+const wasteTypeColors: Record<string, string> = {
+  Mixed: 'bg-primary-glow text-primary',
+  Dry: 'bg-warning/10 text-warning',
+  Wet: 'bg-accent/10 text-accent',
+  Hazardous: 'bg-destructive/10 text-destructive',
+};
+
+const truckIds = ['MP-201', 'MP-215', 'MP-247', 'MP-289', 'MP-302'];
+
 export default function Municipal() {
+  const [pickupQueue, setPickupQueue] = useState(municipalPickupQueue);
+
+  const handleAssignTruck = (reqId: string) => {
+    const randomTruck = truckIds[Math.floor(Math.random() * truckIds.length)];
+    setPickupQueue(prev => prev.map(r => r.id === reqId ? { ...r, assignedTruck: randomTruck } : r));
+  };
+
   const forecastChart = municipalData.forecast.flatMap(z => ['mon','tue','wed','thu','fri','sat','sun'].map(d => ({ zone: z.zone, day: d, value: z[d as keyof typeof z] as number })));
   const grouped = ['mon','tue','wed','thu','fri','sat','sun'].map(d => {
     const entry: Record<string, number | string> = { day: d };
@@ -28,8 +46,38 @@ export default function Municipal() {
           <p className="text-primary-foreground/80 text-sm mt-1">City Intelligence · Route Optimization · Emissions Tracking</p>
         </div>
         <select className="z-10 relative px-4 py-2 rounded-full bg-primary-foreground/20 backdrop-blur text-primary-foreground text-sm border-none outline-none cursor-pointer">
-          <option>Mumbai</option><option>Delhi</option><option>Pune</option>
+          <option>Indore</option><option>Bhopal</option><option>Ujjain</option>
         </select>
+      </div>
+
+      {/* Incoming Pickup Requests */}
+      <div className="card-premium p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-display font-semibold text-foreground">Incoming Pickup Requests</h3>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-glow text-primary font-medium">{pickupQueue.length}</span>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">Live citizen requests awaiting assignment</p>
+        <div className="space-y-2">
+          {pickupQueue.map(req => (
+            <div key={req.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{req.citizenName}</p>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${wasteTypeColors[req.wasteType] || 'bg-secondary text-muted-foreground'}`}>{req.wasteType}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{req.address}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-[10px] text-muted-foreground">{req.minutesAgo} min ago</span>
+                {req.assignedTruck ? (
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-primary-glow text-primary font-medium">{req.assignedTruck}</span>
+                ) : (
+                  <button onClick={() => handleAssignTruck(req.id)} className="btn-primary-gradient text-white px-3 py-1 rounded-full text-[10px] font-medium">Assign Truck</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* KPIs */}
@@ -55,14 +103,18 @@ export default function Municipal() {
       <div className="grid lg:grid-cols-5 gap-6">
         {/* Map */}
         <div className="lg:col-span-3 card-premium p-5">
-          <h3 className="font-display font-semibold text-foreground mb-4">Smart Waste Map — Mumbai</h3>
-          <div className="relative w-full h-80 rounded-2xl bg-surface flex items-center justify-center overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5" />
-            <MapPin className="w-8 h-8 text-primary z-10" />
-            {/* Floating circles */}
-            {[{ x: 25, y: 30, s: 40, c: 'bg-destructive/20' }, { x: 60, y: 50, s: 30, c: 'bg-warning/20' }, { x: 45, y: 70, s: 50, c: 'bg-primary/20' }, { x: 75, y: 35, s: 25, c: 'bg-primary/15' }].map((c, i) => (
-              <div key={i} className={`absolute rounded-full ${c.c}`} style={{ left: `${c.x}%`, top: `${c.y}%`, width: c.s, height: c.s, transform: 'translate(-50%,-50%)' }} />
-            ))}
+          <h3 className="font-display font-semibold text-foreground mb-4">Smart Waste Map — Indore</h3>
+          <div className="w-full h-80 rounded-2xl overflow-hidden">
+            <LeafletMap
+              center={[22.7196, 75.8577]}
+              zoom={13}
+              markers={[
+                { lat: 22.7533, lng: 75.8937, label: 'Zone 4 — Vijay Nagar' },
+                { lat: 22.7236, lng: 75.8577, label: 'Zone 2 — Palasia' },
+                { lat: 22.7186, lng: 75.8572, label: 'Zone 1 — Rajwada' },
+                { lat: 22.7465, lng: 75.8885, label: 'Zone 3 — Scheme 78' },
+              ]}
+            />
           </div>
         </div>
 
