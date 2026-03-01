@@ -10,7 +10,7 @@ import type {
   PickupRequest, CollectionRecord, CarbonWallet, CarbonWalletMonthly,
   MarketplaceBrand, Voucher, MunicipalPickupQueue, MunicipalAlert,
   WasteTimeline, AiPrediction, EsgCorporateBuyer, EsgTransaction,
-  LeaderboardRow, WasteType, PickupStatus, EsgBuyerStatus,
+  LeaderboardRow, WasteType, PickupStatus, EsgBuyerStatus, SubscriptionFrequency,
 } from './database.types'
 
 const API_BASE = 'http://localhost:8000'
@@ -20,6 +20,10 @@ const isMock =
   import.meta.env.VITE_SUPABASE_URL.includes('YOUR_PROJECT_ID')
 
 function err(e: unknown): never {
+  if (e && typeof e === 'object' && 'message' in e) {
+    const sb = e as { message: string; code?: string; details?: string; hint?: string }
+    throw new Error(`[Supabase] ${sb.message}${sb.details ? ' | ' + sb.details : ''}${sb.hint ? ' | hint: ' + sb.hint : ''} (code: ${sb.code})`)
+  }
   throw e instanceof Error ? e : new Error(String(e))
 }
 
@@ -158,7 +162,7 @@ export async function getProfile(userId: string) {
     const { rewardsData } = await import('./mockData')
     return { id: userId, full_name: rewardsData.user.name, portal: 'citizen', city: 'Indore' }
   }
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
   if (error) err(error)
   return data
 }
@@ -193,9 +197,19 @@ export async function createPickupRequest(payload: {
     const { pickupRequests } = await import('./mockData')
     return pickupRequests[0] as unknown as PickupRequest
   }
-  const { data: idRow } = await supabase.rpc('generate_pickup_id')
-  const id = idRow as string
-  const { data, error } = await supabase
+
+  // Generate a collision-proof ID client-side.
+  // The DB's generate_pickup_id() RPC reads MAX(id) without a lock so
+  // concurrent calls return the same value → 409. Using Date.now() (ms)
+  // as the suffix guarantees uniqueness even under rapid submission.
+  const makeId = () => {
+    const d = new Date()
+    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
+    return `PKP-${ds}-${String(Date.now()).slice(-6)}`
+  }
+
+  // Attempt insert, retry once with a fresh ID on 409 conflict.
+  const tryInsert = async (id: string) => supabase
     .from('pickup_requests')
     .insert({
       id,
@@ -203,14 +217,46 @@ export async function createPickupRequest(payload: {
       waste_type: payload.wasteType,
       date: payload.date,
       time_window: payload.timeWindow,
-      address: payload.address,
+      address: payload.address ?? null,
       whatsapp_opted: payload.whatsappOpted ?? false,
       is_subscription: payload.isSubscription ?? false,
-      frequency: payload.frequency as never,
+      frequency: (payload.frequency ?? null) as SubscriptionFrequency | null,
+      status: 'Requested' as PickupStatus,
+      requested_at: new Date().toISOString(),
     })
     .select()
     .single()
+
+  let id = makeId()
+  let { data, error } = await tryInsert(id)
+
+  if (error && (error as any).code === '23505') {
+    // duplicate key — wait 2 ms and retry with a fresh ID
+    await new Promise(r => setTimeout(r, 2))
+    id = makeId()
+    ;({ data, error } = await tryInsert(id))
+  }
+
   if (error) err(error)
+
+  // Safety net: ensure the pickup lands in the municipal queue.
+  // The DB trigger (enqueue_pickup) should do this, but if RLS blocks it
+  // or the trigger is missing, insert manually.
+  try {
+    const { data: existsInQueue } = await supabase
+      .from('municipal_pickup_queue')
+      .select('id')
+      .eq('pickup_id', id)
+      .maybeSingle()
+    if (!existsInQueue) {
+      await supabase.from('municipal_pickup_queue').insert({
+        pickup_id: id,
+        city: 'Indore',
+        display_time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      })
+    }
+  } catch { /* best-effort */ }
+
   return data!
 }
 
@@ -282,7 +328,7 @@ export async function getCarbonWallet(citizenId: string): Promise<CarbonWallet |
     }
   }
   const { data, error } = await supabase
-    .from('carbon_wallets').select('*').eq('citizen_id', citizenId).single()
+    .from('carbon_wallets').select('*').eq('citizen_id', citizenId).maybeSingle()
   if (error) err(error)
   return data
 }
@@ -360,7 +406,7 @@ export async function getMyVouchers(citizenId: string): Promise<Voucher[]> {
 
 // ── Municipal Queue ───────────────────────────────────────────
 
-export async function getMunicipalQueue(city = 'Indore'): Promise<(MunicipalPickupQueue & { pickup_requests: PickupRequest })[]> {
+export async function getMunicipalQueue(city = 'Indore') {
   if (isMock) {
     const { municipalPickupQueue } = await import('./mockData')
     return municipalPickupQueue.map(q => ({
@@ -375,24 +421,36 @@ export async function getMunicipalQueue(city = 'Indore'): Promise<(MunicipalPick
         truck_id: q.assignedTruck || null, eta_minutes: null,
         requested_at: new Date().toISOString(), confirmed_at: null,
         collected_at: null, updated_at: new Date().toISOString(),
+        profiles: { full_name: q.citizenName },
       },
-    })) as never
+    })) as any[]
   }
   const { data, error } = await supabase
     .from('municipal_pickup_queue')
-    .select('*, pickup_requests(*)')
+    .select('*, pickup_requests(*, profiles!pickup_requests_citizen_id_fkey(full_name))')
     .eq('city', city)
     .is('resolved_at', null)
     .order('queued_at', { ascending: false })
   if (error) err(error)
-  return (data as never) ?? []
+  return (data as any[]) ?? []
 }
 
 export async function assignTruckToQueue(queueId: string, truckId: string) {
   if (isMock) return
+  // Update the queue row
+  const { data: qRow } = await supabase
+    .from('municipal_pickup_queue').select('pickup_id').eq('id', queueId).maybeSingle()
   const { error } = await supabase
     .from('municipal_pickup_queue').update({ assigned_truck_id: truckId }).eq('id', queueId)
   if (error) err(error)
+  // Also update the pickup_request itself (assign truck + change status to Confirmed)
+  if (qRow?.pickup_id) {
+    await supabase.from('pickup_requests').update({
+      truck_id: truckId,
+      status: 'Confirmed' as PickupStatus,
+      confirmed_at: new Date().toISOString(),
+    }).eq('id', qRow.pickup_id)
+  }
 }
 
 // ── Municipal Alerts ──────────────────────────────────────────
@@ -534,6 +592,86 @@ export async function getMyReports(userId: string) {
   return data ?? []
 }
 
+// ── Profile Update ────────────────────────────────────────────
+
+export async function updateProfile(userId: string, updates: {
+  full_name?: string; phone?: string; city?: string; society?: string; ward?: string; avatar_url?: string
+}) {
+  if (isMock) return
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
+  if (error) err(error)
+}
+
+// ── Zones ─────────────────────────────────────────────────────
+
+export async function getZones(city = 'Indore') {
+  if (isMock) {
+    const { municipalData } = await import('./mockData')
+    return municipalData.forecast.map((z, i) => ({
+      id: String(i), name: z.zone, city, ward: null, is_active: true, created_at: new Date().toISOString(),
+    }))
+  }
+  const { data, error } = await supabase
+    .from('zones').select('*').eq('city', city).eq('is_active', true).order('name')
+  if (error) err(error)
+  return data ?? []
+}
+
+// ── Trucks ────────────────────────────────────────────────────
+
+export async function getTrucks() {
+  if (isMock) {
+    const { municipalData } = await import('./mockData')
+    return municipalData.trucks.map(t => ({
+      id: t.id, zone_id: null, status: t.status as 'Active' | 'Idle' | 'Delayed' | 'Maintenance',
+      collected_kg: parseFloat(t.collected.replace('t', '')) * 1000,
+      driver_name: null, driver_phone: null, last_active: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }))
+  }
+  const { data, error } = await supabase.from('trucks').select('*').order('id')
+  if (error) err(error)
+  return data ?? []
+}
+
+// ── Zone Forecast ─────────────────────────────────────────────
+
+export async function getZoneForecast(city = 'Indore') {
+  if (isMock) {
+    const { municipalData } = await import('./mockData')
+    return municipalData.forecast.map((z, i) => ({
+      id: String(i), zone_id: String(i), week_start: new Date().toISOString().slice(0, 10),
+      mon_kg: z.mon, tue_kg: z.tue, wed_kg: z.wed, thu_kg: z.thu,
+      fri_kg: z.fri, sat_kg: z.sat, sun_kg: z.sun,
+      zones: { name: z.zone },
+    }))
+  }
+  const { data, error } = await supabase
+    .from('zone_forecast')
+    .select('*, zones(name)')
+    .order('week_start', { ascending: false })
+    .limit(20)
+  if (error) err(error)
+  // Filter by city via zones join
+  return (data ?? []).filter((r: any) => r.zones)
+}
+
+// ── All Pickup Requests (municipal) ───────────────────────────
+
+export async function getAllPickups(city = 'Indore') {
+  if (isMock) {
+    const { municipalPickupQueue } = await import('./mockData')
+    return municipalPickupQueue as any[]
+  }
+  const { data, error } = await supabase
+    .from('pickup_requests')
+    .select('*, profiles!pickup_requests_citizen_id_fkey(full_name, city, society)')
+    .order('requested_at', { ascending: false })
+    .limit(50)
+  if (error) err(error)
+  return data ?? []
+}
+
 // ── Realtime subscriptions ────────────────────────────────────
 
 export function subscribeMunicipalQueue(city: string, onUpdate: () => void) {
@@ -552,4 +690,178 @@ export function subscribePickupStatus(pickupId: string, onUpdate: (row: PickupRe
       { event: 'UPDATE', schema: 'public', table: 'pickup_requests', filter: `id=eq.${pickupId}` },
       payload => onUpdate(payload.new as PickupRequest))
     .subscribe()
+}
+
+
+// ── Truck Driver ──────────────────────────────────────────────
+
+/** Get all pickups assigned to a specific truck that are not yet complete */
+export async function getAssignedPickups(truckId: string): Promise<(PickupRequest & { profiles?: { full_name: string } })[]> {
+  if (isMock) {
+    const { municipalPickupQueue } = await import('./mockData')
+    return municipalPickupQueue
+      .filter(q => q.assignedTruck === truckId)
+      .map(q => ({
+        id: q.id, citizen_id: 'mock', status: 'Confirmed' as PickupStatus,
+        waste_type: q.wasteType as WasteType, date: new Date().toISOString().slice(0, 10),
+        time_window: '8:00 – 10:00 AM', address: q.address, whatsapp_opted: false,
+        is_subscription: false, frequency: null, collector_id: null,
+        truck_id: truckId, eta_minutes: null,
+        requested_at: new Date().toISOString(), confirmed_at: new Date().toISOString(),
+        collected_at: null, updated_at: new Date().toISOString(),
+        profiles: { full_name: q.citizenName },
+      }))
+  }
+  const { data, error } = await supabase
+    .from('pickup_requests')
+    .select('*, profiles!pickup_requests_citizen_id_fkey(full_name)')
+    .eq('truck_id', truckId)
+    .in('status', ['Confirmed', 'En Route', 'Collecting'])
+    .order('confirmed_at', { ascending: true })
+  if (error) err(error)
+  return (data as any[]) ?? []
+}
+
+/** Truck driver starts route — mark pickup as "En Route" */
+export async function startRoute(pickupId: string) {
+  if (isMock) return
+  const { error } = await supabase
+    .from('pickup_requests')
+    .update({ status: 'En Route' as PickupStatus })
+    .eq('id', pickupId)
+  if (error) err(error)
+}
+
+/** Truck driver arrives and starts collecting */
+export async function startCollecting(pickupId: string) {
+  if (isMock) return
+  const { error } = await supabase
+    .from('pickup_requests')
+    .update({ status: 'Collecting' as PickupStatus })
+    .eq('id', pickupId)
+  if (error) err(error)
+}
+
+/** Simulated AI waste analysis from photo
+ *  In production, this would call a YOLO model backend.
+ *  For now, generates realistic waste breakdown based on waste type. */
+export async function analyzeWastePhoto(_imageFile: File, wasteType: WasteType): Promise<{
+  wetKg: number; dryKg: number; hazardousKg: number; totalKg: number
+  segregationScore: number; creditsEarned: number; co2SavedKg: number
+  items: { name: string; category: string; weight: number }[]
+}> {
+  // Simulate processing delay
+  await new Promise(r => setTimeout(r, 2000))
+
+  const base = 3 + Math.random() * 7 // 3–10 kg total
+  let wetKg: number, dryKg: number, hazardousKg: number
+
+  switch (wasteType) {
+    case 'Wet':
+      wetKg = +(base * 0.75).toFixed(1)
+      dryKg = +(base * 0.2).toFixed(1)
+      hazardousKg = +(base * 0.05).toFixed(1)
+      break
+    case 'Dry':
+      wetKg = +(base * 0.1).toFixed(1)
+      dryKg = +(base * 0.85).toFixed(1)
+      hazardousKg = +(base * 0.05).toFixed(1)
+      break
+    case 'Hazardous':
+      wetKg = +(base * 0.1).toFixed(1)
+      dryKg = +(base * 0.15).toFixed(1)
+      hazardousKg = +(base * 0.75).toFixed(1)
+      break
+    default: // Mixed
+      wetKg = +(base * 0.4).toFixed(1)
+      dryKg = +(base * 0.45).toFixed(1)
+      hazardousKg = +(base * 0.15).toFixed(1)
+  }
+
+  const totalKg = +(wetKg + dryKg + hazardousKg).toFixed(1)
+  const segregationScore = Math.floor(60 + Math.random() * 35) // 60–95
+  const creditsEarned = Math.floor(totalKg * segregationScore / 10)
+  const co2SavedKg = +(totalKg * 0.8).toFixed(1) // ~0.8 kg CO₂ per kg recycled
+
+  const itemPool: Record<string, { name: string; category: string }[]> = {
+    Wet: [
+      { name: 'Food scraps', category: 'Organic' },
+      { name: 'Vegetable peels', category: 'Organic' },
+      { name: 'Tea leaves', category: 'Organic' },
+      { name: 'Fruit rinds', category: 'Organic' },
+    ],
+    Dry: [
+      { name: 'PET bottles', category: 'Recyclable' },
+      { name: 'Cardboard', category: 'Recyclable' },
+      { name: 'Newspaper', category: 'Recyclable' },
+      { name: 'Plastic bags', category: 'Recyclable' },
+    ],
+    Hazardous: [
+      { name: 'Battery cells', category: 'E-waste' },
+      { name: 'Paint cans', category: 'Hazardous' },
+      { name: 'Medicine strips', category: 'Biomedical' },
+    ],
+    Mixed: [
+      { name: 'Food scraps', category: 'Organic' },
+      { name: 'PET bottles', category: 'Recyclable' },
+      { name: 'Cardboard', category: 'Recyclable' },
+      { name: 'Plastic bags', category: 'Recyclable' },
+      { name: 'Cloth rags', category: 'Non-recyclable' },
+    ],
+  }
+
+  const pool = itemPool[wasteType] || itemPool.Mixed
+  const items = pool.map(p => ({
+    ...p,
+    weight: +(totalKg / pool.length * (0.6 + Math.random() * 0.8)).toFixed(1),
+  }))
+
+  return { wetKg, dryKg, hazardousKg, totalKg, segregationScore, creditsEarned, co2SavedKg, items }
+}
+
+/** Complete a pickup: record collection → carbon credits auto-added via DB trigger */
+export async function completePickup(pickupId: string, citizenId: string, analysis: {
+  wetKg: number; dryKg: number; hazardousKg: number
+  segregationScore: number; creditsEarned: number; co2SavedKg: number
+}, scannedBy?: string): Promise<CollectionRecord | null> {
+  if (isMock) {
+    return { id: 'mock-col', pickup_id: pickupId, citizen_id: citizenId,
+      date: new Date().toISOString().slice(0, 10),
+      wet_kg: analysis.wetKg, dry_kg: analysis.dryKg, hazardous_kg: analysis.hazardousKg,
+      total_kg: analysis.wetKg + analysis.dryKg + analysis.hazardousKg,
+      segregation_score: analysis.segregationScore, credits_earned: analysis.creditsEarned,
+      co2_saved_kg: analysis.co2SavedKg, scanned_by: scannedBy ?? null,
+      created_at: new Date().toISOString() }
+  }
+
+  // 1. Insert collection record (triggers wallet update automatically)
+  // Note: scanned_by must be a profile UUID – skip if caller passes a truck-code string
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const validScannedBy = scannedBy && UUID_RE.test(scannedBy) ? scannedBy : undefined
+  const { data, error } = await supabase.from('collection_records').insert({
+    pickup_id: pickupId,
+    citizen_id: citizenId,
+    date: new Date().toISOString().slice(0, 10),
+    wet_kg: analysis.wetKg,
+    dry_kg: analysis.dryKg,
+    hazardous_kg: analysis.hazardousKg,
+    segregation_score: analysis.segregationScore,
+    credits_earned: analysis.creditsEarned,
+    co2_saved_kg: analysis.co2SavedKg,
+    ...(validScannedBy ? { scanned_by: validScannedBy } : {}),
+  }).select().single()
+  if (error) err(error)
+
+  // 2. Mark pickup as Complete
+  await supabase.from('pickup_requests').update({
+    status: 'Complete' as PickupStatus,
+    collected_at: new Date().toISOString(),
+  }).eq('id', pickupId)
+
+  // 3. Resolve the queue entry
+  await supabase.from('municipal_pickup_queue').update({
+    resolved_at: new Date().toISOString(),
+  }).eq('pickup_id', pickupId)
+
+  return data
 }

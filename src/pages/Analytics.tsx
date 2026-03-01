@@ -1,6 +1,9 @@
 import { TrendingUp, Cpu } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { wasteTimelineData, municipalData, predictData, esgMarketData } from "@/lib/mockData";
+import { wasteTimelineData as mockTimeline, municipalData as mockMunicipal, predictData as mockPredict, esgMarketData as mockEsg } from "@/lib/mockData";
+import { useSupabaseQuery } from "@/hooks/use-supabase-query";
+import { getWasteTimeline, getAiPredictions, getZoneForecast, getEsgBuyers } from "@/lib/api";
+import { normalizeTimeline, normalizeForecast, normalizePredictData } from "@/lib/normalize";
 
 const getHeatColor = (v: number) => {
   if (v < 25) return 'bg-primary-glow';
@@ -10,6 +13,16 @@ const getHeatColor = (v: number) => {
 };
 
 export default function Analytics() {
+  const { data: timelineData } = useSupabaseQuery(['waste-timeline'], () => getWasteTimeline());
+  const { data: predictionsData } = useSupabaseQuery(['predictions'], () => getAiPredictions());
+  const { data: forecastData } = useSupabaseQuery(['forecast'], () => getZoneForecast());
+  const { data: esgBuyers } = useSupabaseQuery(['esg-buyers'], () => getEsgBuyers());
+
+  const wasteTimelineData = timelineData ? normalizeTimeline(timelineData) : mockTimeline;
+  const predictData = normalizePredictData(predictionsData, mockPredict);
+  const municipalData = { ...mockMunicipal, forecast: forecastData ? normalizeForecast(forecastData) : mockMunicipal.forecast };
+  const esgMarketData = { ...mockEsg, corporateBuyers: esgBuyers ?? mockEsg.corporateBuyers };
+
   const grouped = ['mon','tue','wed','thu','fri','sat','sun'].map(d => {
     const entry: Record<string, number | string> = { day: d };
     municipalData.forecast.forEach(z => { entry[z.zone] = z[d as keyof typeof z] as number; });

@@ -248,36 +248,42 @@ export interface LeaderboardRow {
 }
 
 // ---- Supabase DB type map (for typed client) ----
-export interface Database {
+// Formatted for @supabase/supabase-js v2.45+ which requires Enums + CompositeTypes
+
+type Rls = []  // shorthand for Relationships: []
+
+export type Database = {
   public: {
     Tables: {
-      profiles:               { Row: Profile;              Insert: Omit<Profile, 'created_at' | 'updated_at' | 'avatar_url' | 'phone' | 'society' | 'ward'> & { phone?: string | null; society?: string | null; ward?: string | null; avatar_url?: string | null }; Update: Partial<Profile>; Relationships: [] }
-      zones:                  { Row: Zone;                 Insert: Omit<Zone, 'id' | 'created_at'>;            Update: Partial<Zone>;              Relationships: [] }
-      trucks:                 { Row: Truck;                Insert: Omit<Truck, 'created_at' | 'updated_at'>;   Update: Partial<Truck>;             Relationships: [] }
-      pickup_requests:        { Row: PickupRequest;        Insert: Omit<PickupRequest, 'updated_at'>;          Update: Partial<PickupRequest>;     Relationships: [] }
-      collection_records:     { Row: CollectionRecord;     Insert: Omit<CollectionRecord, 'id' | 'total_kg' | 'created_at'>; Update: Partial<CollectionRecord>; Relationships: [] }
-      carbon_wallets:         { Row: CarbonWallet;         Insert: Omit<CarbonWallet, 'updated_at'>;           Update: Partial<CarbonWallet>;      Relationships: [] }
-      carbon_wallet_monthly:  { Row: CarbonWalletMonthly;  Insert: Omit<CarbonWalletMonthly, 'id'>;            Update: Partial<CarbonWalletMonthly>; Relationships: [] }
-      marketplace_brands:     { Row: MarketplaceBrand;     Insert: Omit<MarketplaceBrand, 'id' | 'created_at'>; Update: Partial<MarketplaceBrand>; Relationships: [] }
-      vouchers:               { Row: Voucher;              Insert: Omit<Voucher, 'id' | 'created_at'>;         Update: Partial<Voucher>;           Relationships: [] }
-      municipal_pickup_queue: { Row: MunicipalPickupQueue; Insert: Omit<MunicipalPickupQueue, 'id' | 'queued_at'>; Update: Partial<MunicipalPickupQueue>; Relationships: [] }
-      municipal_alerts:       { Row: MunicipalAlert;       Insert: Omit<MunicipalAlert, 'id' | 'created_at'>; Update: Partial<MunicipalAlert>;     Relationships: [] }
-      waste_timeline:         { Row: WasteTimeline;        Insert: Omit<WasteTimeline, 'id'>;                  Update: Partial<WasteTimeline>;     Relationships: [] }
-      zone_forecast:          { Row: ZoneForecast;         Insert: Omit<ZoneForecast, 'id'>;                   Update: Partial<ZoneForecast>;      Relationships: [] }
-      ai_predictions:         { Row: AiPrediction;         Insert: Omit<AiPrediction, 'id' | 'created_at'>;   Update: Partial<AiPrediction>;      Relationships: [] }
-      esg_corporate_buyers:   { Row: EsgCorporateBuyer;    Insert: Omit<EsgCorporateBuyer, 'id' | 'total_value' | 'created_at' | 'updated_at'>; Update: Partial<EsgCorporateBuyer>; Relationships: [] }
-      esg_transactions:       { Row: EsgTransaction;       Insert: Omit<EsgTransaction, 'id' | 'total_value'>; Update: Partial<EsgTransaction>;   Relationships: [] }
-      reports:                { Row: Report;               Insert: Omit<Report, 'id' | 'created_at'>;          Update: Partial<Report>;            Relationships: [] }
-      scan_sessions:          { Row: ScanSession;          Insert: Omit<ScanSession, 'id' | 'created_at'>;     Update: Partial<ScanSession>;       Relationships: [] }
-      scan_items:             { Row: ScanItem;             Insert: Omit<ScanItem, 'id' | 'created_at'>;        Update: Partial<ScanItem>;          Relationships: [] }
-      leaderboard_history:    { Row: { id: string; citizen_id: string; month: string; year: number; credits: number; rank: number | null }; Insert: Record<string, unknown>; Update: Record<string, unknown>; Relationships: [] }
+      profiles:               { Row: Profile;              Insert: Omit<Profile, 'created_at' | 'updated_at' | 'avatar_url' | 'phone' | 'society' | 'ward'> & { phone?: string | null; society?: string | null; ward?: string | null; avatar_url?: string | null }; Update: Partial<Profile>; Relationships: Rls }
+      zones:                  { Row: Zone;                 Insert: Omit<Zone, 'id' | 'created_at'>;            Update: Partial<Zone>;              Relationships: Rls }
+      trucks:                 { Row: Truck;                Insert: Omit<Truck, 'created_at' | 'updated_at'>;   Update: Partial<Truck>;             Relationships: Rls }
+      pickup_requests:        { Row: PickupRequest;        Insert: Omit<PickupRequest, 'updated_at'>;          Update: Partial<PickupRequest>;     Relationships: Rls }
+      collection_records:     { Row: CollectionRecord;     Insert: Omit<CollectionRecord, 'id' | 'total_kg' | 'created_at'>; Update: Partial<CollectionRecord>; Relationships: Rls }
+      carbon_wallets:         { Row: CarbonWallet;         Insert: Omit<CarbonWallet, 'updated_at'>;           Update: Partial<CarbonWallet>;      Relationships: Rls }
+      carbon_wallet_monthly:  { Row: CarbonWalletMonthly;  Insert: Omit<CarbonWalletMonthly, 'id'>;            Update: Partial<CarbonWalletMonthly>; Relationships: Rls }
+      marketplace_brands:     { Row: MarketplaceBrand;     Insert: Omit<MarketplaceBrand, 'id' | 'created_at'>; Update: Partial<MarketplaceBrand>; Relationships: Rls }
+      vouchers:               { Row: Voucher;              Insert: Omit<Voucher, 'id' | 'created_at'>;         Update: Partial<Voucher>;           Relationships: Rls }
+      municipal_pickup_queue: { Row: MunicipalPickupQueue; Insert: Omit<MunicipalPickupQueue, 'id' | 'queued_at'>; Update: Partial<MunicipalPickupQueue>; Relationships: Rls }
+      municipal_alerts:       { Row: MunicipalAlert;       Insert: Omit<MunicipalAlert, 'id' | 'created_at'>; Update: Partial<MunicipalAlert>;     Relationships: Rls }
+      waste_timeline:         { Row: WasteTimeline;        Insert: Omit<WasteTimeline, 'id'>;                  Update: Partial<WasteTimeline>;     Relationships: Rls }
+      zone_forecast:          { Row: ZoneForecast;         Insert: Omit<ZoneForecast, 'id'>;                   Update: Partial<ZoneForecast>;      Relationships: Rls }
+      ai_predictions:         { Row: AiPrediction;         Insert: Omit<AiPrediction, 'id' | 'created_at'>;   Update: Partial<AiPrediction>;      Relationships: Rls }
+      esg_corporate_buyers:   { Row: EsgCorporateBuyer;    Insert: Omit<EsgCorporateBuyer, 'id' | 'total_value' | 'created_at' | 'updated_at'>; Update: Partial<EsgCorporateBuyer>; Relationships: Rls }
+      esg_transactions:       { Row: EsgTransaction;       Insert: Omit<EsgTransaction, 'id' | 'total_value'>; Update: Partial<EsgTransaction>;   Relationships: Rls }
+      reports:                { Row: Report;               Insert: Omit<Report, 'id' | 'created_at'>;          Update: Partial<Report>;            Relationships: Rls }
+      scan_sessions:          { Row: ScanSession;          Insert: Omit<ScanSession, 'id' | 'created_at'>;     Update: Partial<ScanSession>;       Relationships: Rls }
+      scan_items:             { Row: ScanItem;             Insert: Omit<ScanItem, 'id' | 'created_at'>;        Update: Partial<ScanItem>;          Relationships: Rls }
+      leaderboard_history:    { Row: { id: string; citizen_id: string; month: string; year: number; credits: number; rank: number | null }; Insert: Record<string, unknown>; Update: Record<string, unknown>; Relationships: Rls }
     }
     Views: {
-      leaderboard_view: { Row: LeaderboardRow; Relationships: [] }
-      esg_revenue_stats: { Row: { city: string; credits_sold: number; total_revenue: number; companies_paid: number }; Relationships: [] }
+      leaderboard_view: { Row: LeaderboardRow; Relationships: Rls }
+      esg_revenue_stats: { Row: { city: string; credits_sold: number; total_revenue: number; companies_paid: number }; Relationships: Rls }
     }
     Functions: {
       generate_pickup_id: { Args: Record<never, never>; Returns: string }
     }
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }

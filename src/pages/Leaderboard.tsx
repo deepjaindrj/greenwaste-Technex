@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Search, Trophy, Swords } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { leaderboardData } from "@/lib/mockData";
+import { leaderboardData as mockLeaderboard } from "@/lib/mockData";
+import { useSupabaseQuery } from "@/hooks/use-supabase-query";
+import { getLeaderboard } from "@/lib/api";
+import { normalizeLeaderboard } from "@/lib/normalize";
 
 const mainTabs = ['Rankings', 'Challenges', 'History'];
 const scopeTabs = ['Society', 'City', 'State', 'National'];
@@ -25,8 +28,11 @@ export default function Leaderboard() {
   const [timeframe, setTimeframe] = useState('Monthly');
   const [search, setSearch] = useState('');
 
+  const { data: lbData } = useSupabaseQuery(['leaderboard'], () => getLeaderboard());
+  const leaderboardData = lbData ? normalizeLeaderboard(lbData) : mockLeaderboard;
+
   const top3 = leaderboardData.slice(0, 3);
-  const podiumOrder = [top3[1], top3[0], top3[2]];
+  const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 stagger-fade-in">

@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { User, Bell, MapPin, Shield, Palette, Save } from "lucide-react";
+import { User, Bell, MapPin, Shield, Palette, Save, Loader2 } from "lucide-react";
 import LeafletMap from "@/components/LeafletMap";
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { updateProfile } from "@/lib/api";
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -19,8 +22,32 @@ const notifSettings = [
 ];
 
 export default function Settings() {
+  const { citizenId } = useCitizen();
   const [activeTab, setActiveTab] = useState('profile');
   const [notifs, setNotifs] = useState(notifSettings.map(n => n.default));
+
+  const displayName = 'Guest User';
+  const initials = 'GU';
+  const city = 'Indore';
+
+  const [name, setName] = useState(displayName);
+  const [email, setEmail] = useState('arjun@example.com');
+  const [phone, setPhone] = useState('+91 98765 43210');
+  const [saving, setSaving] = useState(false);
+
+  const saveMutation = useSupabaseMutation(
+    async (data: { full_name: string; city: string }) => updateProfile(citizenId!, data),
+    [['profile']],
+  );
+
+  const handleSaveProfile = async () => {
+    if (!citizenId) return;
+    setSaving(true);
+    try {
+      await saveMutation.mutateAsync({ full_name: name, city });
+    } catch { /* fallback */ }
+    setSaving(false);
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 stagger-fade-in">
@@ -50,18 +77,18 @@ export default function Settings() {
             <div className="space-y-6">
               <h3 className="font-display font-semibold text-foreground">Profile Settings</h3>
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-primary-glow flex items-center justify-center text-xl font-display font-bold text-primary">AM</div>
+                <div className="w-16 h-16 rounded-full bg-primary-glow flex items-center justify-center text-xl font-display font-bold text-primary">{initials}</div>
                 <button className="btn-secondary px-4 py-2 rounded-full text-sm">Change Photo</button>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 {[
-                  { label: 'Full Name', value: 'Arjun Mehta', type: 'text' },
-                  { label: 'Email', value: 'arjun@example.com', type: 'email' },
-                  { label: 'Phone', value: '+91 98765 43210', type: 'tel' },
+                  { label: 'Full Name', value: name, type: 'text', onChange: (v: string) => setName(v) },
+                  { label: 'Email', value: email, type: 'email', onChange: (v: string) => setEmail(v) },
+                  { label: 'Phone', value: phone, type: 'tel', onChange: (v: string) => setPhone(v) },
                 ].map(f => (
                   <div key={f.label}>
                     <label className="text-xs text-muted-foreground block mb-1.5">{f.label}</label>
-                    <input type={f.type} defaultValue={f.value} className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-shadow" />
+                    <input type={f.type} value={f.value} onChange={e => f.onChange(e.target.value)} className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-shadow" />
                   </div>
                 ))}
                 <div>
@@ -75,8 +102,8 @@ export default function Settings() {
                   <input type="text" defaultValue="Harmony Heights" className="w-full h-10 px-4 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-shadow" />
                 </div>
               </div>
-              <button className="btn-primary-gradient text-white px-6 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">
-                <Save className="w-4 h-4" /> Save Changes
+              <button disabled={saving} onClick={handleSaveProfile} className="btn-primary-gradient text-white px-6 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 disabled:opacity-60">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {saving ? 'Saving…' : 'Save Changes'}
               </button>
 
               {/* Eco Tier */}

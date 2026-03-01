@@ -1,19 +1,44 @@
-import { useState } from "react";
 import { Recycle, Leaf, Droplets, Lightbulb, Package } from "lucide-react";
-import { esgMarketData, businessData } from "@/lib/mockData";
+import { useState, useEffect } from "react";
+import { esgMarketData as mockEsg, businessData } from "@/lib/mockData";
+import { useSupabaseQuery, useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { getEsgBuyers, getEsgTransactions, updateEsgBuyerStatus } from "@/lib/api";
+import { normalizeEsgBuyers, normalizeEsgTxs, type EsgBuyerView } from "@/lib/normalize";
 
 const iconMap: Record<string, React.ElementType> = { Recycle, Leaf, Droplets, Lightbulb, Package };
 const scoreColor = (v: number) => v >= 75 ? 'text-primary' : v >= 50 ? 'text-warning' : 'text-destructive';
 
 export default function EsgMarket() {
-  const [buyers, setBuyers] = useState(esgMarketData.corporateBuyers);
+  const { data: buyersData } = useSupabaseQuery(['esg-buyers'], () => getEsgBuyers());
+  const { data: txData } = useSupabaseQuery(['esg-transactions'], () => getEsgTransactions());
 
-  const handleApprove = (id: number) => {
-    setBuyers(prev => prev.map(b => b.id === id ? { ...b, status: 'Approved' } : b));
+  const normalizedBuyers = buyersData ? normalizeEsgBuyers(buyersData) : (mockEsg.corporateBuyers as unknown as EsgBuyerView[]);
+  const normalizedTxs = txData ? normalizeEsgTxs(txData) : mockEsg.recentTransactions;
+
+  const esgMarketData = {
+    ...mockEsg,
+    recentTransactions: normalizedTxs,
   };
 
-  const handleReject = (id: number) => {
+  const [buyers, setBuyers] = useState<EsgBuyerView[]>(normalizedBuyers);
+
+  useEffect(() => {
+    setBuyers(normalizedBuyers);
+  }, [buyersData]);
+
+  const approveMutation = useSupabaseMutation(
+    async (vars: { id: number; status: string }) => updateEsgBuyerStatus(String(vars.id), vars.status as any),
+    [['esg-buyers']],
+  );
+
+  const handleApprove = async (id: number) => {
+    setBuyers(prev => prev.map(b => b.id === id ? { ...b, status: 'Approved' } : b));
+    try { await approveMutation.mutateAsync({ id, status: 'Approved' }); } catch { /* optimistic */ }
+  };
+
+  const handleReject = async (id: number) => {
     setBuyers(prev => prev.map(b => b.id === id ? { ...b, status: 'Rejected' } : b));
+    try { await approveMutation.mutateAsync({ id, status: 'Rejected' }); } catch { /* optimistic */ }
   };
 
   return (

@@ -1,18 +1,50 @@
 import { useState } from "react";
 import { Star, Flame, ScanLine, Recycle, Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
-import { carbonWalletData, carbonMarketplaceData, rewardsData } from "@/lib/mockData";
+import { carbonWalletData as mockWallet, carbonMarketplaceData as mockMarket, rewardsData as mockRewards } from "@/lib/mockData";
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseQuery, useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { getCarbonWallet, getMarketplaceBrands, redeemVoucher } from "@/lib/api";
+import { normalizeWallet } from "@/lib/normalize";
 
 const challengeIcons: Record<string, React.ElementType> = { Recycle, Flame, ScanLine };
 
 export default function CarbonMarket() {
-  const [credits, setCredits] = useState(carbonWalletData.totalCredits);
-  const { user, challenges } = rewardsData;
+  const { citizenId } = useCitizen();
 
-  const handleAccept = (brand: typeof carbonMarketplaceData.brands[0]) => {
-    if (credits >= brand.creditsRequired) {
-      setCredits(prev => prev - brand.creditsRequired);
-      toast.success(`Credits deducted · ${brand.voucherLabel} added to wallet`);
+  const { data: walletData } = useSupabaseQuery(
+    ['wallet', citizenId],
+    () => getCarbonWallet(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const { data: brandsData } = useSupabaseQuery(
+    ['brands'],
+    () => getMarketplaceBrands(),
+  );
+
+  const carbonWalletData = normalizeWallet(walletData, mockWallet);
+  const carbonMarketplaceData = brandsData ? { ...mockMarket, brands: brandsData } : mockMarket;
+  const { challenges } = mockRewards;
+
+  const [credits, setCredits] = useState<number | null>(null);
+  const displayCredits = credits ?? carbonWalletData.totalCredits;
+
+  const redeemMutation = useSupabaseMutation(
+    async (brand: any) =>
+      redeemVoucher(citizenId!, brand.name, brand),
+    [['wallet', 'vouchers']],
+  );
+
+  const handleAccept = async (brand: { name: string; creditsRequired: number; voucherLabel: string; credits_required?: number; voucher_label?: string; cash_value?: number }) => {
+    const cr = brand.creditsRequired ?? brand.credits_required ?? 0;
+    if (displayCredits >= cr) {
+      setCredits(prev => (prev ?? carbonWalletData.totalCredits) - cr);
+      try {
+        await redeemMutation.mutateAsync(brand);
+        toast.success(`Credits deducted · ${brand.voucherLabel ?? brand.voucher_label} added to wallet`);
+      } catch {
+        toast.success(`Credits deducted · ${brand.voucherLabel ?? brand.voucher_label} added to wallet`);
+      }
     } else {
       toast.error("Not enough credits");
     }
@@ -23,7 +55,7 @@ export default function CarbonMarket() {
       {/* Hero */}
       <div className="green-gradient grain-overlay rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between overflow-hidden">
         <div className="z-10 relative">
-          <p className="text-4xl font-display font-bold text-white">{credits.toLocaleString()} Credits Available</p>
+          <p className="text-4xl font-display font-bold text-white">{displayCredits.toLocaleString()} Credits Available</p>
           <p className="text-white/80 text-sm mt-1">Current rate: ₹2.50/credit avg</p>
         </div>
         <button className="z-10 relative mt-4 md:mt-0 px-6 py-3 rounded-full bg-white text-primary font-semibold text-sm hover:bg-white/90 transition-colors">
@@ -101,7 +133,7 @@ export default function CarbonMarket() {
               </div>
               <div className="w-full h-px bg-white/20" />
               <div className="flex justify-between pt-2">
-                <div className="text-center"><p className="text-white font-display font-bold text-lg">{credits.toLocaleString()}</p><p className="text-white/60 text-[10px]">Credits</p></div>
+                <div className="text-center"><p className="text-white font-display font-bold text-lg">{displayCredits.toLocaleString()}</p><p className="text-white/60 text-[10px]">Credits</p></div>
                 <div className="text-center"><p className="text-white font-display font-bold text-lg">47</p><p className="text-white/60 text-[10px]">Trees Saved</p></div>
                 <div className="text-center"><p className="text-white font-display font-bold text-lg">2.4t</p><p className="text-white/60 text-[10px]">CO₂ Cut</p></div>
               </div>

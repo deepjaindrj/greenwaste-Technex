@@ -2,16 +2,46 @@ import { useState } from "react";
 import { Phone, ArrowRight, Truck } from "lucide-react";
 import LeafletMap from "@/components/LeafletMap";
 import { useNavigate } from "react-router-dom";
-import { pickupRequests, collectionHistory } from "@/lib/mockData";
+import { pickupRequests as mockPickups, collectionHistory as mockHistory } from "@/lib/mockData";
+import { useCitizen } from "@/hooks/use-citizen";
+import { usePollingQuery } from "@/hooks/use-supabase-query";
+import { getMyPickups, getCollectionHistory } from "@/lib/api";
+import { normalizePickups, normalizeCollections } from "@/lib/normalize";
 
 const steps = ['Requested', 'Assigned', 'En Route', 'Collecting', 'Processed'];
 
 export default function CollectionTracker() {
   const navigate = useNavigate();
+  const { citizenId } = useCitizen();
   const [viewCompleted, setViewCompleted] = useState(false);
 
-  const activeRequest = viewCompleted ? pickupRequests[1] : pickupRequests[0];
-  const activeStatusIndex = steps.indexOf(activeRequest.status === 'Complete' ? 'Processed' : activeRequest.status);
+  const { data: pickupsData } = usePollingQuery(
+    ['pickups', citizenId],
+    () => getMyPickups(citizenId!),
+    5000,
+    { enabled: !!citizenId },
+  );
+  const { data: collectionsData } = usePollingQuery(
+    ['collections', citizenId],
+    () => getCollectionHistory(citizenId!),
+    5000,
+    { enabled: !!citizenId },
+  );
+
+  const pickupRequests = pickupsData ? normalizePickups(pickupsData) : mockPickups;
+  const collectionHistory = collectionsData ? normalizeCollections(collectionsData) : mockHistory;
+
+  const activeRequest = viewCompleted ? (pickupRequests[1] ?? pickupRequests[0]) : pickupRequests[0];
+  const statusToStep: Record<string, string> = {
+    Requested: 'Requested',
+    Confirmed: 'Assigned',
+    'En Route': 'En Route',
+    Collecting: 'Collecting',
+    Complete: 'Processed',
+    Cancelled: 'Requested',
+  };
+  const activeStatusIndex = activeRequest ? steps.indexOf(statusToStep[activeRequest.status] ?? 'Requested') : 0;
+  const latestCollection = collectionHistory[0];
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 stagger-fade-in">
@@ -20,9 +50,11 @@ export default function CollectionTracker() {
           <h1 className="text-2xl font-display font-semibold text-foreground">Collection Tracker</h1>
           <p className="text-sm text-muted-foreground">Track your waste pickup in real time</p>
         </div>
-        <span className="px-3 py-1 rounded-full bg-primary-glow text-primary text-xs font-mono font-medium">
-          {activeRequest.id}
-        </span>
+        {activeRequest && (
+          <span className="px-3 py-1 rounded-full bg-primary-glow text-primary text-xs font-mono font-medium">
+            {activeRequest.id}
+          </span>
+        )}
       </div>
 
       {/* View toggle */}
@@ -31,6 +63,18 @@ export default function CollectionTracker() {
         <button onClick={() => setViewCompleted(true)} className={`px-4 py-1.5 rounded-full transition-colors ${viewCompleted ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'}`}>Completed</button>
       </div>
 
+      {/* No pickups state */}
+      {!activeRequest ? (
+        <div className="card-premium p-10 text-center space-y-3">
+          <Truck className="w-10 h-10 text-muted-foreground mx-auto" />
+          <p className="text-sm font-medium text-foreground">No pickups yet</p>
+          <p className="text-xs text-muted-foreground">Request a pickup to start tracking your collection</p>
+          <button onClick={() => navigate('/request-pickup')} className="mt-2 px-5 py-2 rounded-full btn-primary-gradient text-white text-sm font-medium inline-flex items-center gap-2">
+            Request Pickup <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <>
       {/* Vertical Stepper */}
       <div className="card-premium p-6">
         <div className="space-y-0">
@@ -75,21 +119,21 @@ export default function CollectionTracker() {
       </div>
 
       {/* Collector Info */}
-      {activeRequest.collector && (
+      {activeRequest?.collector && (
         <div className="card-premium p-5">
           <h3 className="font-display font-semibold text-foreground mb-3">Collector</h3>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-primary-glow flex items-center justify-center text-sm font-semibold text-primary">
-              {activeRequest.collector.split(' ').map(n => n[0]).join('')}
+              {activeRequest.collector.split(' ').map((n: string) => n[0]).join('')}
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">{activeRequest.collector}</p>
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                <Phone className="w-3 h-3" /> {activeRequest.phone}
+                <Phone className="w-3 h-3" /> {activeRequest.phone ?? 'N/A'}
               </div>
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Truck className="w-4 h-4" /> {activeRequest.truckId}
+              <Truck className="w-4 h-4" /> {activeRequest.truckId ?? '—'}
             </div>
           </div>
 
@@ -107,29 +151,29 @@ export default function CollectionTracker() {
       )}
 
       {/* Scan Results (when complete) */}
-      {(activeRequest.status === 'Complete' || viewCompleted) && (
+      {(activeRequest?.status === 'Complete' || viewCompleted) && latestCollection && (
         <div className="space-y-4">
           <div className="card-premium p-5">
             <h3 className="font-display font-semibold text-foreground mb-3">Scan Results</h3>
             <div className="flex gap-2 mb-4">
-              <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">Wet {collectionHistory[0].wetKg}kg</span>
-              <span className="px-3 py-1 rounded-full bg-warning/10 text-warning text-xs font-medium">Dry {collectionHistory[0].dryKg}kg</span>
-              <span className="px-3 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-medium">Hazardous {collectionHistory[0].hazardousKg}kg</span>
+              <span className="px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-medium">Wet {latestCollection.wetKg ?? 0}kg</span>
+              <span className="px-3 py-1 rounded-full bg-warning/10 text-warning text-xs font-medium">Dry {latestCollection.dryKg ?? 0}kg</span>
+              <span className="px-3 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-medium">Hazardous {latestCollection.hazardousKg ?? 0}kg</span>
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-muted-foreground">Segregation Score</span>
-                <span className="font-medium text-foreground">{collectionHistory[0].segregationScore}%</span>
+                <span className="font-medium text-foreground">{latestCollection.segregationScore ?? 0}%</span>
               </div>
               <div className="w-full h-2 bg-surface rounded-full overflow-hidden">
-                <div className="h-full progress-bar-gradient" style={{ width: `${collectionHistory[0].segregationScore}%` }} />
+                <div className="h-full progress-bar-gradient" style={{ width: `${latestCollection.segregationScore ?? 0}%` }} />
               </div>
             </div>
           </div>
 
           <div className="green-gradient grain-overlay rounded-2xl p-6 overflow-hidden relative text-center">
             <div className="relative z-10">
-              <p className="text-2xl font-display font-bold text-white">+{collectionHistory[0].creditsEarned} Carbon Credits Earned!</p>
+              <p className="text-2xl font-display font-bold text-white">+{latestCollection.creditsEarned ?? 0} Carbon Credits Earned!</p>
               <button onClick={() => navigate('/carbon')} className="mt-3 px-5 py-2 rounded-full bg-white text-primary text-sm font-medium hover:bg-white/90 transition-colors inline-flex items-center gap-2">
                 View in Carbon Wallet <ArrowRight className="w-4 h-4" />
               </button>
@@ -141,23 +185,29 @@ export default function CollectionTracker() {
       {/* Past Collections */}
       <div className="card-premium p-5">
         <h3 className="font-display font-semibold text-foreground mb-3">Past Collections</h3>
-        <div className="space-y-3">
-          {collectionHistory.slice(1, 3).map(c => (
-            <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-              <div>
-                <p className="text-sm font-medium text-foreground">{c.date}</p>
-                <p className="text-xs text-muted-foreground">{c.totalKg} kg total</p>
+        {collectionHistory.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">No past collections yet</p>
+        ) : (
+          <div className="space-y-3">
+            {collectionHistory.slice(1, 3).map(c => (
+              <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{c.date}</p>
+                  <p className="text-xs text-muted-foreground">{c.totalKg ?? 0} kg total</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(c.segregationScore ?? 0) >= 80 ? 'bg-primary-glow text-primary' : 'bg-warning/10 text-warning'}`}>
+                    {c.segregationScore ?? 0}%
+                  </span>
+                  <span className="text-xs font-medium text-primary">+{c.creditsEarned ?? 0}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.segregationScore >= 80 ? 'bg-primary-glow text-primary' : 'bg-warning/10 text-warning'}`}>
-                  {c.segregationScore}%
-                </span>
-                <span className="text-xs font-medium text-primary">+{c.creditsEarned}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
+        </>
+      )}
     </div>
   );
 }

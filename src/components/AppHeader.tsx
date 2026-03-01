@@ -1,6 +1,7 @@
 import { Search, Bell, Menu } from "lucide-react";
 import { useState } from "react";
 import { NotificationDrawer } from "./NotificationDrawer";
+import { useCitizen } from "@/hooks/use-citizen";
 
 interface AppHeaderProps {
   onMenuClick?: () => void;
@@ -9,6 +10,8 @@ interface AppHeaderProps {
 export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
+  const { profile } = useCitizen();
+  const initials = (profile?.full_name ?? 'AM').split(' ').map((n: string) => n[0]).join('').toUpperCase();
 
   return (
     <>
@@ -34,7 +37,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
           </button>
           <div className="w-8 h-8 rounded-full bg-primary-glow flex items-center justify-center text-xs font-semibold text-primary">
-            AM
+            {initials}
           </div>
         </div>
       </header>

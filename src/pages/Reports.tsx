@@ -1,5 +1,9 @@
-import { User, Building, Briefcase, Leaf, ClipboardCheck, TrendingUp, FileText, Download, Share2, Trash2 } from "lucide-react";
-import { reportTemplates, recentReports } from "@/lib/mockData";
+import { User, Building, Briefcase, Leaf, ClipboardCheck, TrendingUp, FileText, Download, Share2, Trash2, Loader2 } from "lucide-react";
+import { reportTemplates as mockTemplates, recentReports as mockReports } from "@/lib/mockData";
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseQuery, useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { getMyReports, generateReport } from "@/lib/api";
+import { useState } from "react";
 
 const iconMap: Record<string, React.ElementType> = { User, Building, Briefcase, Leaf, ClipboardCheck, TrendingUp };
 const statusStyles: Record<string, string> = {
@@ -9,6 +13,26 @@ const statusStyles: Record<string, string> = {
 };
 
 export default function Reports() {
+  const { citizenId } = useCitizen();
+  const { data: reportsData } = useSupabaseQuery(
+    ['reports', citizenId],
+    () => getMyReports(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const reportTemplates = mockTemplates;
+  const recentReports = reportsData ?? mockReports;
+
+  const genMutation = useSupabaseMutation(
+    async (templateId: string) => generateReport(templateId, 'Monthly', citizenId),
+    [['reports']],
+  );
+  const [generating, setGenerating] = useState<string | null>(null);
+
+  const handleGenerate = async (templateId: string) => {
+    setGenerating(templateId);
+    try { await genMutation.mutateAsync(templateId); } catch { /* fallback */ }
+    setGenerating(null);
+  };
   return (
     <div className="max-w-6xl mx-auto space-y-6 stagger-fade-in">
       <div>
@@ -29,7 +53,9 @@ export default function Reports() {
                 </div>
                 <h4 className="text-sm font-display font-semibold text-foreground">{t.title}</h4>
                 <p className="text-xs text-muted-foreground mt-1 flex-1">{t.description}</p>
-                <button className="mt-4 btn-primary-gradient text-primary-foreground py-2 rounded-full text-xs font-medium">Generate →</button>
+                <button disabled={generating === t.id} onClick={() => handleGenerate(t.id)} className="mt-4 btn-primary-gradient text-primary-foreground py-2 rounded-full text-xs font-medium disabled:opacity-60">
+                  {generating === t.id ? 'Generating…' : 'Generate →'}
+                </button>
               </div>
             );
           })}

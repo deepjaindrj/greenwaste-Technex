@@ -1,10 +1,38 @@
 import { TreePine, Trash2, Zap, ArrowRight } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { carbonWalletData, collectionHistory } from "@/lib/mockData";
+import { carbonWalletData as mockWallet, collectionHistory as mockHistory } from "@/lib/mockData";
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseQuery } from "@/hooks/use-supabase-query";
+import { getCarbonWallet, getCarbonMonthlyChart, getCollectionHistory } from "@/lib/api";
+import { normalizeWallet, normalizeCollections } from "@/lib/normalize";
 
 export default function Carbon() {
   const navigate = useNavigate();
+  const { citizenId } = useCitizen();
+
+  const { data: walletRaw } = useSupabaseQuery(
+    ['wallet', citizenId],
+    () => getCarbonWallet(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const { data: monthlyRaw } = useSupabaseQuery(
+    ['wallet-monthly', citizenId],
+    () => getCarbonMonthlyChart(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const { data: collectionsRaw } = useSupabaseQuery(
+    ['collections', citizenId],
+    () => getCollectionHistory(citizenId!),
+    { enabled: !!citizenId },
+  );
+
+  const carbonWalletData = normalizeWallet(walletRaw, mockWallet);
+  // Merge monthly chart from dedicated endpoint
+  if (monthlyRaw && monthlyRaw.length) {
+    carbonWalletData.monthlyChart = monthlyRaw.map((m: any) => ({ month: m.month, credits: m.credits }));
+  }
+  const collectionHistory = collectionsRaw ? normalizeCollections(collectionsRaw) : mockHistory;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 stagger-fade-in">

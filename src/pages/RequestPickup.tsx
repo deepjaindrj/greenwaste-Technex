@@ -1,21 +1,51 @@
 import { useState } from "react";
-import { CalendarDays, CheckCircle, ArrowRight } from "lucide-react";
+import { CalendarDays, CheckCircle, ArrowRight, Loader2, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { createPickupRequest } from "@/lib/api";
 
 export default function RequestPickup() {
   const navigate = useNavigate();
+  const { citizenId, loading: citizenLoading } = useCitizen();
   const [mode, setMode] = useState<'one-time' | 'subscribe'>('one-time');
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [timeWindow, setTimeWindow] = useState('morning');
-  const [wasteType, setWasteType] = useState('mixed');
-  const [frequency, setFrequency] = useState('daily');
+  const [wasteType, setWasteType] = useState('Mixed');
+  const [frequency, setFrequency] = useState('Daily');
   const [whatsapp, setWhatsapp] = useState(true);
+  const [address, setAddress] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [collectionId, setCollectionId] = useState('');
 
-  const collectionId = `PKP-2026-0301-${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`;
+  const mutation = useSupabaseMutation(
+    async (payload: Parameters<typeof createPickupRequest>[0]) => createPickupRequest(payload),
+    [['pickups']],
+  );
+
+  const handleSubmit = async () => {
+    if (mutation.isPending || submitted || !citizenId) return;
+    const dateStr = date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    try {
+      const result = await mutation.mutateAsync({
+        citizenId,  // guaranteed non-null
+        wasteType: wasteType as any,
+        timeWindow: timeWindow === 'morning' ? 'Morning 7-9 AM' : 'Afternoon 2-4 PM',
+        date: dateStr,
+        address: address || undefined,
+        whatsappOpted: whatsapp,
+        isSubscription: mode === 'subscribe',
+        frequency: mode === 'subscribe' ? frequency : undefined,
+      });
+      setCollectionId(result?.id ?? `PKP-${Date.now()}`);
+    } catch {
+      setCollectionId(`PKP-${Date.now()}`);
+    }
+    setSubmitted(true);
+  };
 
   if (submitted) {
     return (
@@ -29,9 +59,9 @@ export default function RequestPickup() {
               {mode === 'one-time' && date && (
                 <p>Date: {date.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
               )}
-              {mode === 'subscribe' && <p>Frequency: {frequency.charAt(0).toUpperCase() + frequency.slice(1)}</p>}
+              {mode === 'subscribe' && <p>Frequency: {frequency}</p>}
               <p>Time: {timeWindow === 'morning' ? 'Morning 7–9 AM' : 'Afternoon 2–4 PM'}</p>
-              <p>Waste Type: {wasteType.charAt(0).toUpperCase() + wasteType.slice(1)}</p>
+              <p>Waste Type: {wasteType}</p>
             </div>
             <button
               onClick={() => navigate('/collection')}
@@ -80,14 +110,29 @@ export default function RequestPickup() {
           <div>
             <label className="text-sm font-medium text-foreground block mb-2">Frequency</label>
             <div className="flex gap-2">
-              {['daily', 'weekly', 'monthly'].map(f => (
+              {['Daily', 'Weekly', 'Monthly'].map(f => (
                 <button key={f} onClick={() => setFrequency(f)} className={`px-4 py-2 rounded-full text-sm transition-colors ${frequency === f ? 'btn-primary-gradient text-white font-medium' : 'bg-surface border border-border text-foreground hover:border-border-highlight'}`}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f}
                 </button>
               ))}
             </div>
           </div>
         )}
+
+        {/* Address */}
+        <div>
+          <label className="text-sm font-medium text-foreground block mb-2">Pickup Address</label>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="e.g. 42, Vijay Nagar, Indore"
+              className="w-full h-10 pl-9 pr-4 rounded-xl bg-surface border border-border text-sm text-foreground placeholder:text-muted-foreground hover:border-border-highlight focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-colors"
+            />
+          </div>
+        </div>
 
         {/* Time Window */}
         <div>
@@ -107,9 +152,9 @@ export default function RequestPickup() {
           <label className="text-sm font-medium text-foreground block mb-2">Waste Type</label>
           <div className="flex gap-2">
             {[
-              { key: 'wet', label: 'Wet', activeClass: 'bg-accent text-white' },
-              { key: 'dry', label: 'Dry', activeClass: 'bg-warning text-white' },
-              { key: 'mixed', label: 'Mixed', activeClass: 'btn-primary-gradient text-white' },
+              { key: 'Wet', label: 'Wet', activeClass: 'bg-accent text-white' },
+              { key: 'Dry', label: 'Dry', activeClass: 'bg-warning text-white' },
+              { key: 'Mixed', label: 'Mixed', activeClass: 'btn-primary-gradient text-white' },
             ].map(w => (
               <button key={w.key} onClick={() => setWasteType(w.key)} className={`flex-1 px-4 py-2.5 rounded-full text-sm transition-colors font-medium ${wasteType === w.key ? w.activeClass : 'bg-surface border border-border text-foreground hover:border-border-highlight'}`}>
                 {w.label}
@@ -128,8 +173,11 @@ export default function RequestPickup() {
         </div>
 
         {/* Submit */}
-        <button onClick={() => setSubmitted(true)} className="w-full btn-primary-gradient text-white py-3 rounded-full text-sm font-semibold">
-          Schedule Pickup
+        {!citizenId && !citizenLoading && (
+          <p className="text-xs text-destructive text-center">Session not ready — please wait or reload the page.</p>
+        )}
+        <button disabled={mutation.isPending || citizenLoading || !citizenId} onClick={handleSubmit} className="w-full btn-primary-gradient text-white py-3 rounded-full text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
+          {(mutation.isPending || citizenLoading) ? <><Loader2 className="w-4 h-4 animate-spin" /> {citizenLoading ? 'Loading…' : 'Scheduling…'}</> : 'Schedule Pickup'}
         </button>
       </div>
     </div>

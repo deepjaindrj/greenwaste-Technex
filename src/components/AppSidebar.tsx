@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Camera, Leaf, TrendingUp, Building2,
+  LayoutDashboard, Camera, Leaf, TrendingUp, Building2, Truck,
   Trophy, FileText, MapPin, Settings, PackageCheck, ShoppingBag, Wallet, Briefcase
 } from "lucide-react";
+import { useCitizen } from "@/hooks/use-citizen";
 
 const citizenNav = [
   {
@@ -35,6 +36,7 @@ const municipalNav = [
     label: "OPERATIONS",
     items: [
       { title: "Operations Center", icon: Building2, path: "/municipal" },
+      { title: "Truck Driver", icon: Truck, path: "/truck-driver" },
       { title: "ESG & Carbon Market", icon: Briefcase, path: "/esg" },
     ],
   },
@@ -49,14 +51,20 @@ const municipalNav = [
 
 export function AppSidebar() {
   const location = useLocation();
-  const [portal, setPortal] = useState<'citizen' | 'municipal'>(
-    () => (localStorage.getItem('wasteos-portal') as 'citizen' | 'municipal') ?? 'citizen'
+  const { profile, portal: ctxPortal, setPortal: ctxSetPortal } = useCitizen();
+  const [portal, setPortalLocal] = useState<'citizen' | 'municipal'>(
+    () => ctxPortal ?? (localStorage.getItem('wasteos-portal') as 'citizen' | 'municipal') ?? 'citizen'
   );
 
   const handlePortalChange = (p: 'citizen' | 'municipal') => {
-    setPortal(p);
+    setPortalLocal(p);
+    ctxSetPortal(p);
     localStorage.setItem('wasteos-portal', p);
   };
+
+  const displayName = profile?.full_name ?? 'Arjun Mehta';
+  const initials = displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+  const city = profile?.city ?? 'Indore';
 
   const navSections = portal === 'citizen' ? citizenNav : municipalNav;
 
@@ -128,15 +136,15 @@ export function AppSidebar() {
         <div className="card-premium p-3 rounded-xl">
           <div className="flex items-center gap-2 text-xs">
             <MapPin className="w-3.5 h-3.5 text-primary" />
-            <span className="font-medium text-foreground">Indore, Madhya Pradesh</span>
+            <span className="font-medium text-foreground">{city}, Madhya Pradesh</span>
           </div>
           <p className="mt-1 text-[10px] text-primary font-medium">Sustainability Score: 74</p>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 px-2">
-            <div className="w-8 h-8 rounded-full bg-primary-glow flex items-center justify-center text-xs font-semibold text-primary">AM</div>
+            <div className="w-8 h-8 rounded-full bg-primary-glow flex items-center justify-center text-xs font-semibold text-primary">{initials}</div>
             <div>
-              <p className="text-xs font-medium text-foreground">Arjun Mehta</p>
+              <p className="text-xs font-medium text-foreground">{displayName}</p>
               <p className="text-[10px] text-muted-foreground">Eco Champion</p>
             </div>
           </div>

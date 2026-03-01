@@ -1,8 +1,11 @@
-import { useState } from "react";
 import { Trash2, CheckCircle, Truck, Cloud, RefreshCw, AlertTriangle, Clock, Award, TrendingUp } from "lucide-react";
 import LeafletMap from "@/components/LeafletMap";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
-import { municipalData, carbonData, municipalPickupQueue } from "@/lib/mockData";
+import { useState, useEffect } from "react";
+import { municipalData as mockMunicipal, carbonData, municipalPickupQueue as mockQueue } from "@/lib/mockData";
+import { useSupabaseQuery, useSupabaseMutation } from "@/hooks/use-supabase-query";
+import { getMunicipalQueue, getMunicipalAlerts, getZones, getTrucks, getZoneForecast, assignTruckToQueue, subscribeMunicipalQueue } from "@/lib/api";
+import { normalizeQueue, normalizeForecast, type QueueView } from "@/lib/normalize";
 
 const kpiIcons: Record<string, React.ElementType> = { Trash2, CheckCircle, Truck, Cloud, RefreshCw };
 const alertStyles: Record<string, { border: string; icon: React.ElementType }> = {
@@ -23,11 +26,46 @@ const wasteTypeColors: Record<string, string> = {
 const truckIds = ['MP-201', 'MP-215', 'MP-247', 'MP-289', 'MP-302'];
 
 export default function Municipal() {
-  const [pickupQueue, setPickupQueue] = useState(municipalPickupQueue);
+  const { data: queueData, refetch: refetchQueue } = useSupabaseQuery(['municipal-queue'], () => getMunicipalQueue(), { refetchInterval: 15000 });
+  const { data: alertsData } = useSupabaseQuery(['municipal-alerts'], () => getMunicipalAlerts());
+  const { data: trucksData } = useSupabaseQuery(['trucks'], () => getTrucks());
+  const { data: forecastData } = useSupabaseQuery(['forecast'], () => getZoneForecast());
 
-  const handleAssignTruck = (reqId: string) => {
-    const randomTruck = truckIds[Math.floor(Math.random() * truckIds.length)];
+  // Realtime subscription for queue changes
+  useEffect(() => {
+    const channel = subscribeMunicipalQueue('Indore', () => { refetchQueue(); });
+    return () => { channel.unsubscribe(); };
+  }, [refetchQueue]);
+
+  // Build truck IDs from DB data, fallback to hardcoded
+  const availableTruckIds = trucksData && trucksData.length > 0
+    ? trucksData.map((t: any) => t.id)
+    : truckIds;
+
+  const municipalData = {
+    ...mockMunicipal,
+    alerts: alertsData ?? mockMunicipal.alerts,
+    trucks: trucksData ?? mockMunicipal.trucks,
+    forecast: forecastData ? normalizeForecast(forecastData) : mockMunicipal.forecast,
+  };
+
+  const [pickupQueue, setPickupQueue] = useState<QueueView[]>(() =>
+    queueData ? normalizeQueue(queueData) : (mockQueue as unknown as QueueView[])
+  );
+
+  useEffect(() => {
+    if (queueData) setPickupQueue(normalizeQueue(queueData));
+  }, [queueData]);
+
+  const assignMutation = useSupabaseMutation(
+    async (vars: { reqId: string; truckId: string }) => assignTruckToQueue(vars.reqId, vars.truckId),
+    [['municipal-queue']],
+  );
+
+  const handleAssignTruck = async (reqId: string) => {
+    const randomTruck = availableTruckIds[Math.floor(Math.random() * availableTruckIds.length)];
     setPickupQueue(prev => prev.map(r => r.id === reqId ? { ...r, assignedTruck: randomTruck } : r));
+    try { await assignMutation.mutateAsync({ reqId, truckId: randomTruck }); } catch { /* optimistic */ }
   };
 
   const forecastChart = municipalData.forecast.flatMap(z => ['mon','tue','wed','thu','fri','sat','sun'].map(d => ({ zone: z.zone, day: d, value: z[d as keyof typeof z] as number })));

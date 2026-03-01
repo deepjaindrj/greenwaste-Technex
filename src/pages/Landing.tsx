@@ -1,5 +1,6 @@
 import { ArrowRight, Leaf, Camera, Star, Play, MapPin, Brain, Trophy, Zap, Quote, Home, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useCitizen } from "@/hooks/use-citizen";
 
 const stats = [
   { value: '2,847 kg', label: 'Waste Tracked Today' },
@@ -23,6 +24,12 @@ const testimonials = [
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { setPortal, loading } = useCitizen();
+
+  const handlePortal = (portal: 'citizen' | 'municipal') => {
+    setPortal(portal);
+    navigate(portal === 'citizen' ? '/dashboard' : '/municipal');
+  };
 
   return (
     <div className="min-h-screen" style={{ background: '#F7FDF9' }}>
@@ -36,9 +43,9 @@ export default function Landing() {
             <span className="font-display font-semibold text-lg text-foreground">WasteOS</span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/dashboard')} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</button>
-            <button onClick={() => navigate('/dashboard')} className="btn-primary-gradient text-white px-5 py-2 rounded-full text-sm font-medium">
-              Get Started
+            <button onClick={() => handlePortal('citizen')} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</button>
+            <button disabled={loading} onClick={() => handlePortal('citizen')} className="btn-primary-gradient text-white px-5 py-2 rounded-full text-sm font-medium disabled:opacity-60">
+              {loading ? 'Loading…' : 'Get Started'}
             </button>
           </div>
         </div>
@@ -73,25 +80,25 @@ export default function Landing() {
 
           {/* Portal Cards */}
           <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto mb-8">
-            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => { localStorage.setItem('wasteos-portal', 'citizen'); navigate('/dashboard'); }}>
+            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => handlePortal('citizen')}>
               <div className="w-12 h-12 rounded-2xl bg-primary-glow flex items-center justify-center mb-4">
                 <Home className="w-6 h-6 text-primary" />
               </div>
               <h3 className="font-display font-semibold text-xl text-foreground mb-2">I'm a Citizen</h3>
               <p className="text-sm text-muted-foreground mb-5">Request pickups, earn carbon credits, sell to brands</p>
-              <button className="btn-primary-gradient text-white px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center">
-                Enter Citizen Portal <ArrowRight className="w-4 h-4" />
+              <button disabled={loading} onClick={() => handlePortal('citizen')} className="btn-primary-gradient text-white px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center disabled:opacity-60">
+                {loading ? 'Loading...' : 'Enter Citizen Portal'} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => { localStorage.setItem('wasteos-portal', 'municipal'); navigate('/municipal'); }}>
+            <div className="card-premium p-8 text-left hover:-translate-y-1 transition-all duration-200 cursor-pointer" onClick={() => handlePortal('municipal')}>
               <div className="w-12 h-12 rounded-2xl bg-primary-glow flex items-center justify-center mb-4">
                 <Building2 className="w-6 h-6 text-primary" />
               </div>
               <h3 className="font-display font-semibold text-xl text-foreground mb-2">I'm a Municipal Corp</h3>
               <p className="text-sm text-muted-foreground mb-5">Manage city waste, approve ESG buyers, track analytics</p>
-              <button className="btn-secondary px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center">
-                Enter Municipal Portal <ArrowRight className="w-4 h-4" />
+              <button disabled={loading} onClick={() => handlePortal('municipal')} className="btn-secondary px-6 py-3 rounded-full text-sm font-semibold flex items-center gap-2 w-full justify-center disabled:opacity-60">
+                {loading ? 'Loading...' : 'Enter Municipal Portal'} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -225,8 +232,8 @@ export default function Landing() {
             <h2 className="font-display font-bold text-3xl md:text-4xl text-white mb-4">Ready to transform your city's waste management?</h2>
             <p className="text-white/80 text-lg mb-8 max-w-lg mx-auto">Join thousands of citizens and municipalities building a sustainable future with AI.</p>
             <div className="flex items-center justify-center gap-4">
-              <button onClick={() => navigate('/dashboard')} className="px-8 py-3.5 rounded-full bg-white text-primary font-semibold text-base hover:bg-white/90 transition-colors">
-                Get Started Free
+              <button disabled={loading} onClick={() => handlePortal('citizen')} className="px-8 py-3.5 rounded-full bg-white text-primary font-semibold text-base hover:bg-white/90 transition-colors disabled:opacity-60">
+                {loading ? 'Loading…' : 'Get Started Free'}
               </button>
               <button className="px-8 py-3.5 rounded-full border border-white/30 text-white font-medium text-base hover:bg-white/10 transition-colors">
                 Talk to Sales
@@ -247,10 +254,10 @@ export default function Landing() {
             <span className="text-xs text-muted-foreground ml-2">Waste Intelligence Platform</span>
           </div>
           <div className="flex gap-6 text-sm text-muted-foreground">
-            <button onClick={() => navigate('/dashboard')}>Dashboard</button>
-            <button onClick={() => navigate('/scan')}>Scanner</button>
-            <button onClick={() => navigate('/carbon')}>Carbon</button>
-            <button onClick={() => navigate('/rewards')}>Rewards</button>
+            <button onClick={() => handlePortal('citizen')}>Dashboard</button>
+            <button onClick={() => { handlePortal('citizen'); navigate('/scan'); }}>Scanner</button>
+            <button onClick={() => { handlePortal('citizen'); navigate('/carbon'); }}>Carbon</button>
+            <button onClick={() => { handlePortal('citizen'); navigate('/marketplace'); }}>Rewards</button>
           </div>
           <p className="text-xs text-muted-foreground">© 2024 WasteOS. All rights reserved.</p>
         </div>

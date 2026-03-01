@@ -2,19 +2,19 @@
 // Supabase client — single shared instance for the whole app
 // ============================================================
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './database.types'
 
-const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string
-const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+const supabaseUrl  = (import.meta.env.VITE_SUPABASE_URL  as string) || ''
+const supabaseAnon = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
 
 if (!supabaseUrl || !supabaseAnon) {
-  throw new Error(
-    '[WasteOS] Missing Supabase env variables.\n' +
+  console.warn(
+    '[WasteOS] Missing Supabase env variables — running in MOCK mode.\n' +
     'Copy .env.local and fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY.'
   )
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnon, {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const supabase = createClient<any>(supabaseUrl, supabaseAnon, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

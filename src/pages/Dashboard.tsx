@@ -1,14 +1,10 @@
-import { ArrowRight, Leaf, Trash2, Flame, Zap, CheckCircle, Camera, Trophy, Wallet } from "lucide-react";
+import { ArrowRight, Leaf, Trash2, Flame, Zap, CheckCircle, Camera, Trophy, Wallet, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { pickupRequests, collectionHistory, carbonWalletData } from "@/lib/mockData";
-
-const personalKpis = [
-  { icon: Leaf, label: 'CO₂ Saved', value: '14.8 kg', color: 'text-primary' },
-  { icon: Trash2, label: 'Waste Collected', value: '21.3 kg', color: 'text-accent' },
-  { icon: Flame, label: 'Streak', value: '12 days', color: 'text-warning' },
-  { icon: Zap, label: 'Credits This Month', value: '+282', color: 'text-primary' },
-  { icon: CheckCircle, label: 'Segregation Score', value: '78%', color: 'text-primary' },
-];
+import { useCitizen } from "@/hooks/use-citizen";
+import { useSupabaseQuery } from "@/hooks/use-supabase-query";
+import { getMyPickups, getCollectionHistory, getCarbonWallet } from "@/lib/api";
+import { pickupRequests as mockPickups, collectionHistory as mockHistory, carbonWalletData as mockWallet } from "@/lib/mockData";
+import { normalizeWallet, normalizePickups, normalizeCollections } from "@/lib/normalize";
 
 const quickLinks = [
   { label: 'Scanner', icon: Camera, path: '/scan' },
@@ -19,7 +15,39 @@ const quickLinks = [
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const nextPickup = pickupRequests[0];
+  const { citizenId } = useCitizen();
+
+  const { data: pickups } = useSupabaseQuery(
+    ['pickups', citizenId],
+    () => getMyPickups(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const { data: collections } = useSupabaseQuery(
+    ['collections', citizenId],
+    () => getCollectionHistory(citizenId!),
+    { enabled: !!citizenId },
+  );
+  const { data: wallet } = useSupabaseQuery(
+    ['wallet', citizenId],
+    () => getCarbonWallet(citizenId!),
+    { enabled: !!citizenId },
+  );
+
+  const pickupRequests = pickups ? normalizePickups(pickups) : mockPickups;
+  const collectionHistory = collections ? normalizeCollections(collections) : mockHistory;
+  const carbonWalletData = normalizeWallet(wallet, mockWallet);
+  const nextPickup = pickupRequests[0] ?? {
+    id: '', wasteType: 'Mixed', date: '', timeWindow: 'Morning 7-9 AM',
+    status: 'Requested', collector: undefined, truckId: undefined, eta: undefined,
+  };
+
+  const personalKpis = [
+    { icon: Leaf, label: 'CO₂ Saved', value: carbonWalletData.co2Saved, color: 'text-primary' },
+    { icon: Trash2, label: 'Waste Collected', value: `${collectionHistory.reduce((s, c) => s + c.wetKg + c.dryKg + c.hazardousKg, 0).toFixed(1)} kg`, color: 'text-accent' },
+    { icon: Flame, label: 'Streak', value: `${carbonWalletData.streak} days`, color: 'text-warning' },
+    { icon: Zap, label: 'Credits This Month', value: `+${carbonWalletData.monthlyCredits}`, color: 'text-primary' },
+    { icon: CheckCircle, label: 'Segregation Score', value: `${collectionHistory.length ? Math.round(collectionHistory.reduce((s, c) => s + c.segregationScore, 0) / collectionHistory.length) : 78}%`, color: 'text-primary' },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 stagger-fade-in">
@@ -34,7 +62,7 @@ export default function Dashboard() {
         <div className="z-10 relative">
           <p className="text-sm text-white/80">Carbon Credits Balance</p>
           <p className="text-4xl font-display font-bold text-white mt-1">{carbonWalletData.totalCredits.toLocaleString()}</p>
-          <p className="text-white/70 text-sm mt-1">+{collectionHistory[0].creditsEarned} from last collection</p>
+          <p className="text-white/70 text-sm mt-1">+{collectionHistory[0]?.creditsEarned ?? 0} from last collection</p>
         </div>
         <button onClick={() => navigate('/request-pickup')} className="hidden md:flex z-10 relative items-center gap-2 btn-primary-gradient text-white px-6 py-3 rounded-full text-sm font-semibold" style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
           Request Pickup Now <ArrowRight className="w-4 h-4" />
@@ -62,18 +90,26 @@ export default function Dashboard() {
           <div className="card-premium p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-display font-semibold text-foreground">Next Pickup</h3>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                nextPickup.status === 'En Route' ? 'bg-primary-glow text-primary' :
-                nextPickup.status === 'Complete' ? 'bg-primary-glow text-primary' :
-                'bg-warning/10 text-warning'
-              }`}>{nextPickup.status}</span>
+              {pickupRequests.length > 0 ? (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                  nextPickup.status === 'En Route' ? 'bg-primary-glow text-primary' :
+                  nextPickup.status === 'Complete' ? 'bg-primary-glow text-primary' :
+                  'bg-warning/10 text-warning'
+                }`}>{nextPickup.status}</span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-secondary text-muted-foreground">None</span>
+              )}
             </div>
-            <div className="space-y-2 text-sm">
-              {nextPickup.collector && <p className="text-foreground"><span className="text-muted-foreground">Collector:</span> {nextPickup.collector}</p>}
-              {nextPickup.truckId && <p className="text-foreground"><span className="text-muted-foreground">Truck:</span> {nextPickup.truckId}</p>}
-              {nextPickup.eta && <p className="text-primary font-medium">ETA: {nextPickup.eta}</p>}
-              <p className="text-foreground"><span className="text-muted-foreground">Time:</span> {nextPickup.timeWindow}</p>
-            </div>
+            {pickupRequests.length > 0 ? (
+              <div className="space-y-2 text-sm">
+                {nextPickup.collector && <p className="text-foreground"><span className="text-muted-foreground">Collector:</span> {nextPickup.collector}</p>}
+                {nextPickup.truckId && <p className="text-foreground"><span className="text-muted-foreground">Truck:</span> {nextPickup.truckId}</p>}
+                {nextPickup.eta && <p className="text-primary font-medium">ETA: {nextPickup.eta}</p>}
+                <p className="text-foreground"><span className="text-muted-foreground">Time:</span> {nextPickup.timeWindow}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No pickups scheduled. Request one to get started!</p>
+            )}
             <button onClick={() => navigate('/collection')} className="mt-4 text-primary text-sm font-medium flex items-center gap-1 hover:gap-2 transition-all">
               Track Live <ArrowRight className="w-4 h-4" />
             </button>
