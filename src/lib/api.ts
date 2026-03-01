@@ -25,9 +25,18 @@ function err(e: unknown): never {
 
 // ── Scan page ─────────────────────────────────────────────────
 
+export interface DetectedObject {
+  label: string
+  confidence: number
+  bbox: number[]
+}
+
 export interface AnalyzeSuccessResponse {
   status: 'success'
-  classification: {
+  analysis_source: 'yolo' | 'ml_fallback'
+  final_category: string
+  detected_objects: DetectedObject[]
+  ml_support: {
     category: string
     confidence: number
   }
@@ -37,7 +46,7 @@ export interface AnalyzeSuccessResponse {
     environmental_impact: string
     landfill_risk: string
     user_advice: string
-  }
+  } | null
 }
 
 export interface AnalyzeRejectedResponse {
@@ -84,8 +93,7 @@ export const getChatResponse = async (
   message: string,
   imageB64: string,
   mimeType: string,
-  classification: { category: string; confidence: number },
-  insights: AnalyzeSuccessResponse['insights'],
+  result: AnalyzeSuccessResponse,
   history: { role: string; text: string }[],
 ): Promise<{ message: string }> => {
   const controller = new AbortController()
@@ -95,7 +103,18 @@ export const getChatResponse = async (
     const response = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, image_b64: imageB64, mime_type: mimeType, classification, insights, history }),
+      body: JSON.stringify({
+        message,
+        image_b64: imageB64,
+        mime_type: mimeType,
+        classification: result.ml_support,
+        insights: result.insights || {},
+        history,
+        final_category: result.final_category,
+        analysis_source: result.analysis_source,
+        detected_objects: result.detected_objects,
+        ml_support: result.ml_support,
+      }),
       signal: controller.signal,
     })
 

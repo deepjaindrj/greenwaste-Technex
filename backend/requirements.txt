@@ -7,3 +7,4 @@ groq==0.11.0
 numpy==1.26.4
 python-dotenv==1.0.1
 httpx==0.27.2
+ultralytics

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Camera, Upload, Cpu, FileText, Check, Loader2, Send, Download, Share2, ArrowRight, X, RefreshCw, AlertTriangle } from "lucide-react";
 import { analyzeWasteImage, AnalyzeSuccessResponse, getChatResponse } from "@/lib/api";
 
@@ -11,6 +11,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   Recyclable: "#16A34A",
   Hazardous: "#EF4444",
   "Non-Recyclable": "#6B7280",
+  "Mixed Waste": "#8B5CF6",
+  "Contaminated Recyclable": "#F97316",
+  "Segregation Required": "#EC4899",
 };
 
 export default function Scan() {
@@ -27,7 +30,99 @@ export default function Scan() {
   const [imageB64, setImageB64] = useState("");
   const [imageMime, setImageMime] = useState("image/jpeg");
   const [currentAnalysisStage, setCurrentAnalysisStage] = useState(0);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamingIdx, setStreamingIdx] = useState<number | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Typewriter effect for AI messages
+  useEffect(() => {
+    if (streamingIdx === null) return;
+    const msg = messages[streamingIdx];
+    if (!msg || msg.role !== 'ai') { setStreamingIdx(null); return; }
+    const fullText = msg.text;
+    if (streamingText.length >= fullText.length) {
+      setStreamingIdx(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setStreamingText(fullText.slice(0, streamingText.length + 2));
+    }, 12);
+    return () => clearTimeout(timer);
+  }, [streamingText, streamingIdx, messages]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamingText, chatLoading]);
+
+  // Generate & download PDF report
+  const downloadPDF = useCallback(() => {
+    if (!analysisResult) return;
+    const r = analysisResult;
+    const ins = r.insights;
+    const lines = [
+      '═══════════════════════════════════════════',
+      '         WASTEOS — WASTE ANALYSIS REPORT   ',
+      '═══════════════════════════════════════════',
+      '',
+      `Date: ${new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `Time: ${new Date().toLocaleTimeString('en-IN')}`,
+      '',
+      '── CLASSIFICATION ─────────────────────────',
+      `Final Category : ${r.final_category}`,
+      `Analysis Source: ${r.analysis_source === 'yolo' ? 'YOLO Object Detection' : 'ML Classifier (Fallback)'}`,
+      '',
+      '── DETECTED OBJECTS ───────────────────────',
+      ...(r.detected_objects.length > 0
+        ? r.detected_objects.map((o, i) => `  ${i + 1}. ${o.label} (${(o.confidence * 100).toFixed(1)}%)`)
+        : ['  No objects detected by YOLO']),
+      '',
+      '── ML SUPPORT ─────────────────────────────',
+      `ML Category    : ${r.ml_support.category || 'N/A'}`,
+      `ML Confidence  : ${r.ml_support.confidence ? (r.ml_support.confidence * 100).toFixed(1) + '%' : 'N/A'}`,
+      '',
+      '── DETECTED ITEMS ─────────────────────────',
+      ...(ins ? ins.detected_items.map((item, i) => `  ${i + 1}. ${item}`) : ['  N/A']),
+      '',
+      '── DISPOSAL METHOD ────────────────────────',
+      ins?.disposal_method || 'N/A',
+      '',
+      '── ENVIRONMENTAL IMPACT ───────────────────',
+      ins?.environmental_impact || 'N/A',
+      '',
+      '── LANDFILL RISK ──────────────────────────',
+      ins?.landfill_risk || 'N/A',
+      '',
+      '── RECOMMENDATION ─────────────────────────',
+      ins?.user_advice || 'N/A',
+      '',
+      '═══════════════════════════════════════════',
+      '  Powered by WasteOS YOLO v26 Engine',
+      '═══════════════════════════════════════════',
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `WasteOS_Report_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [analysisResult]);
+
+  // Share analysis
+  const shareReport = useCallback(async () => {
+    if (!analysisResult) return;
+    const r = analysisResult;
+    const objLabels = r.detected_objects.map(o => o.label).join(', ');
+    const text = `WasteOS Analysis: ${r.final_category} (${r.analysis_source === 'yolo' ? 'YOLO' : 'ML'}). Objects: ${objLabels || 'N/A'}. ${r.insights?.user_advice || ''}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'WasteOS Report', text }); } catch { /* cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(text);
+      alert('Report copied to clipboard!');
+    }
+  }, [analysisResult]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,13 +218,22 @@ export default function Scan() {
         msg,
         imageB64,
         imageMime,
-        analysisResult.classification,
-        analysisResult.insights,
-        history.slice(0, -1) // exclude current msg since backend appends it
+        analysisResult,
+        history.slice(0, -1),
       );
-      setMessages(prev => [...prev, { role: 'ai', text: res.message }]);
+      setMessages(prev => {
+        const updated = [...prev, { role: 'ai' as const, text: res.message }];
+        setStreamingText("");
+        setStreamingIdx(updated.length - 1);
+        return updated;
+      });
     } catch {
-      setMessages(prev => [...prev, { role: 'ai', text: "Sorry, I couldn't process that request." }]);
+      setMessages(prev => {
+        const updated = [...prev, { role: 'ai' as const, text: "Sorry, I couldn't process that request." }];
+        setStreamingText("");
+        setStreamingIdx(updated.length - 1);
+        return updated;
+      });
     }
     setChatLoading(false);
   }, [analysisResult, imageB64, imageMime, messages]);
@@ -149,11 +253,11 @@ export default function Scan() {
   }, []);
 
   const analysisSteps = [
-    { label: 'Validating image with AI Vision...', done: currentAnalysisStage > 0 },
-    { label: 'Image confirmed as waste — running classifier...', done: currentAnalysisStage > 1 },
-    { label: 'TensorFlow model prediction complete', done: currentAnalysisStage > 2 },
-    { label: 'Generating environmental insights...', done: currentAnalysisStage > 3 },
-    { label: 'Pipeline complete', done: currentAnalysisStage >= 4 },
+    { label: 'Image preprocessing complete', done: currentAnalysisStage > 0 },
+    { label: 'Running YOLO v26 object detection...', done: currentAnalysisStage > 1 },
+    { label: 'Classifying waste from detected objects...', done: currentAnalysisStage > 2 },
+    { label: 'Generating sustainability report...', done: currentAnalysisStage > 3 },
+    { label: 'Analysis complete', done: currentAnalysisStage >= 4 },
   ];
 
   const currentStepIndex = step === 'capture' || step === 'camera' ? 0 : step === 'analyzing' ? 1 : 2;
@@ -216,7 +320,7 @@ export default function Scan() {
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE SCAN
             </div>
             <div className="absolute top-3 right-3 z-10 px-2.5 py-1 rounded-full bg-white/10 text-white/70 text-[10px] font-mono">
-              AI Pipeline Ready
+              YOLO v26 Ready
             </div>
             <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/50 backdrop-blur-sm px-4 py-2.5 text-center">
               <p className="text-white/80 text-xs">Point at waste object to detect</p>
@@ -272,13 +376,13 @@ export default function Scan() {
               </div>
               <div className="flex justify-center gap-3">
                 <button onClick={startAnalysis} className="btn-primary-gradient text-primary-foreground px-8 py-3 rounded-full text-sm font-medium flex items-center gap-2 shimmer" style={{ backgroundSize: '200% 100%', backgroundImage: 'linear-gradient(90deg, #22C55E 0%, #16A34A 25%, #10B981 50%, #16A34A 75%, #22C55E 100%)' }}>
-                  Analyze with AI Pipeline
+                  Analyze with YOLO v26
                 </button>
                 <button onClick={resetScan} className="btn-secondary px-5 py-3 rounded-full text-sm flex items-center gap-2">
                   <RefreshCw className="w-4 h-4" /> Re-upload
                 </button>
               </div>
-              <p className="text-center text-xs text-muted-foreground">3-stage AI pipeline: Groq Vision + TensorFlow + Sustainability Insights</p>
+              <p className="text-center text-xs text-muted-foreground">YOLO v26 + WasteOS AI will analyze in ~3 seconds</p>
             </div>
           )}
         </div>
@@ -290,7 +394,7 @@ export default function Scan() {
           <div className="grid md:grid-cols-2 gap-8">
             {imagePreview && <img src={imagePreview} alt="Analyzing" className="rounded-2xl w-full object-cover max-h-72" />}
             <div className="space-y-4">
-              <h3 className="font-display font-semibold text-foreground">Running AI Pipeline...</h3>
+              <h3 className="font-display font-semibold text-foreground">Analyzing waste...</h3>
               {analysisSteps.map((s, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
                   {s.done ? <Check className="w-4 h-4 text-primary shrink-0" /> : currentAnalysisStage === i || (i === 0 && currentAnalysisStage === 0) ? <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" /> : <div className="w-4 h-4 rounded-full border border-border shrink-0" />}
@@ -300,7 +404,7 @@ export default function Scan() {
               <div className="w-full h-1 bg-surface rounded-full overflow-hidden mt-4">
                 <div className="h-full progress-bar-gradient transition-all duration-100" style={{ width: `${progress}%` }} />
               </div>
-              <p className="text-xs text-muted-foreground">Processing through 3-stage pipeline...</p>
+              <p className="text-xs text-muted-foreground">~{Math.max(0, Math.ceil((100 - progress) * 0.03 * 10) / 10)}s remaining</p>
             </div>
           </div>
         </div>
@@ -315,7 +419,7 @@ export default function Scan() {
             </div>
             <h3 className="font-display font-semibold text-foreground text-lg">Image Rejected</h3>
             <p className="text-sm text-muted-foreground max-w-md">
-              The uploaded image was not recognized as valid garbage or waste material by our AI Vision gatekeeper.
+              The uploaded image was not recognized as valid garbage or waste material by our YOLO v26 detection engine.
             </p>
             {rejectionReason && (
               <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-4 py-3">
@@ -343,53 +447,88 @@ export default function Scan() {
           <div className="card-premium p-5">
             <div className="relative rounded-2xl overflow-hidden bg-foreground/5 h-72 flex items-center justify-center">
               {imagePreview ? <img src={imagePreview} alt="Analyzed" className="w-full h-full object-cover" /> : <div className="text-muted-foreground text-sm">Analysis Complete</div>}
-              <div className="absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: CATEGORY_COLORS[analysisResult.classification.category] || "#6B7280" }}>
-                {analysisResult.classification.category} — {(analysisResult.classification.confidence * 100).toFixed(1)}%
+              <div className="absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: CATEGORY_COLORS[analysisResult.final_category] || "#6B7280" }}>
+                {analysisResult.final_category}
               </div>
-              <span className="absolute top-3 right-3 text-[10px] bg-card/80 backdrop-blur px-2 py-1 rounded-full text-muted-foreground font-mono">AI Pipeline Analysis</span>
+              <div className="absolute top-3 right-3 flex items-center gap-2">
+                <span className={`text-[10px] backdrop-blur px-2 py-1 rounded-full text-white font-medium ${analysisResult.analysis_source === 'yolo' ? 'bg-emerald-600/90' : 'bg-amber-600/90'}`}>
+                  {analysisResult.analysis_source === 'yolo' ? 'YOLO Detection' : 'ML Fallback'}
+                </span>
+                <span className="text-[10px] bg-card/80 backdrop-blur px-2 py-1 rounded-full text-muted-foreground font-mono">WasteOS YOLO v26</span>
+              </div>
+              {/* Object count badge */}
+              {analysisResult.detected_objects.length > 0 && (
+                <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-medium">
+                  {analysisResult.detected_objects.length} object{analysisResult.detected_objects.length > 1 ? 's' : ''} detected
+                </div>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="card-premium p-4 text-center">
               <p className="text-xs text-muted-foreground">Category</p>
-              <p className="font-display font-semibold mt-1" style={{ color: CATEGORY_COLORS[analysisResult.classification.category] || "#6B7280" }}>{analysisResult.classification.category}</p>
+              <p className="font-display font-semibold mt-1" style={{ color: CATEGORY_COLORS[analysisResult.final_category] || "#6B7280" }}>{analysisResult.final_category}</p>
             </div>
             <div className="card-premium p-4 text-center">
-              <p className="text-xs text-muted-foreground">Confidence</p>
-              <p className="font-display font-semibold text-foreground mt-1">{(analysisResult.classification.confidence * 100).toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground">Objects Found</p>
+              <p className="font-display font-semibold text-foreground mt-1">{analysisResult.detected_objects.length}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{analysisResult.analysis_source === 'yolo' ? 'via YOLO' : 'ML fallback'}</p>
             </div>
             <div className="card-premium p-4 text-center">
               <p className="text-xs text-muted-foreground">Detected Items</p>
-              <p className="font-display font-semibold text-foreground mt-1 text-sm">{analysisResult.insights.detected_items.join(", ") || "—"}</p>
+              <p className="font-display font-semibold text-foreground mt-1 text-sm">{analysisResult.insights?.detected_items?.join(", ") || "—"}</p>
             </div>
             <div className="card-premium p-4 text-center">
               <p className="text-xs text-muted-foreground">Disposal</p>
-              <p className="font-display font-semibold text-primary mt-1 text-sm">{analysisResult.insights.disposal_method || "—"}</p>
+              <p className="font-display font-semibold text-primary mt-1 text-sm">{analysisResult.insights?.disposal_method || "—"}</p>
             </div>
           </div>
+
+          {/* Detected Objects from YOLO */}
+          {analysisResult.detected_objects.length > 0 && (
+            <div className="card-premium p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">YOLO Objects:</span>
+                {analysisResult.detected_objects.map((o, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    {o.label} ({(o.confidence * 100).toFixed(0)}%)
+                  </span>
+                ))}
+                {analysisResult.ml_support.category && (
+                  <span className="ml-auto text-[10px] text-muted-foreground">ML support: {analysisResult.ml_support.category} ({(analysisResult.ml_support.confidence * 100).toFixed(1)}%)</span>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-6">
             <div className="card-premium p-5 space-y-4">
               <h3 className="font-display font-semibold text-foreground">Environmental Insights</h3>
 
-              <div className="space-y-3">
+              {analysisResult.insights ? (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-secondary/50">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">Environmental Impact</p>
+                    <p className="text-sm text-foreground">{analysisResult.insights.environmental_impact || "—"}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-destructive/5 border border-destructive/10">
+                    <p className="text-[10px] uppercase tracking-wider text-destructive font-medium mb-1">Landfill Risk</p>
+                    <p className="text-sm text-foreground">{analysisResult.insights.landfill_risk || "—"}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
+                    <p className="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">Advice</p>
+                    <p className="text-sm text-foreground">{analysisResult.insights.user_advice || "—"}</p>
+                  </div>
+                </div>
+              ) : (
                 <div className="p-3 rounded-xl bg-secondary/50">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">Environmental Impact</p>
-                  <p className="text-sm text-foreground">{analysisResult.insights.environmental_impact || "—"}</p>
+                  <p className="text-sm text-muted-foreground">Environmental insights unavailable for this analysis.</p>
                 </div>
-                <div className="p-3 rounded-xl bg-destructive/5 border border-destructive/10">
-                  <p className="text-[10px] uppercase tracking-wider text-destructive font-medium mb-1">Landfill Risk</p>
-                  <p className="text-sm text-foreground">{analysisResult.insights.landfill_risk || "—"}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
-                  <p className="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">Advice</p>
-                  <p className="text-sm text-foreground">{analysisResult.insights.user_advice || "—"}</p>
-                </div>
-              </div>
+              )}
 
               <div className="flex flex-wrap gap-2 pt-2">
-                {analysisResult.insights.detected_items.map((item, i) => (
+                {(analysisResult.insights?.detected_items || []).map((item, i) => (
                   <span key={i} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-primary/10 text-primary">{item}</span>
                 ))}
               </div>
@@ -408,10 +547,15 @@ export default function Scan() {
               <div className="flex-1 min-h-[160px] max-h-60 overflow-y-auto space-y-2 mb-3">
                 {messages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'}`}>{m.text}</div>
+                    <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'}`}>
+                      {m.role === 'ai' && streamingIdx === i ? (
+                        <>{streamingText}<span className="inline-block w-1.5 h-3 bg-primary/60 ml-0.5 animate-pulse" /></>
+                      ) : m.text}
+                    </div>
                   </div>
                 ))}
-                {chatLoading && <div className="flex justify-start"><div className="px-3 py-2 rounded-2xl bg-secondary text-xs text-muted-foreground">Typing...</div></div>}
+                {chatLoading && <div className="flex justify-start"><div className="px-3 py-2 rounded-2xl bg-secondary text-xs text-muted-foreground">Thinking<span className="dots-animation">...</span></div></div>}
+                <div ref={chatEndRef} />
               </div>
               <div className="flex gap-2">
                 <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat(chatInput)} placeholder="Ask about this waste..." className="flex-1 h-9 px-4 rounded-full bg-surface text-sm border-none outline-none focus:ring-2 focus:ring-primary/20" />
@@ -421,8 +565,8 @@ export default function Scan() {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <button className="btn-secondary px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2"><Download className="w-4 h-4" /> Download Report PDF</button>
-            <button className="px-5 py-2.5 rounded-full text-primary text-sm font-medium hover:bg-primary-glow transition-colors flex items-center gap-2"><Share2 className="w-4 h-4" /> Share Impact</button>
+            <button onClick={downloadPDF} className="btn-secondary px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2"><Download className="w-4 h-4" /> Download Report</button>
+            <button onClick={shareReport} className="px-5 py-2.5 rounded-full text-primary text-sm font-medium hover:bg-primary-glow transition-colors flex items-center gap-2"><Share2 className="w-4 h-4" /> Share Impact</button>
             <button onClick={resetScan} className="btn-primary-gradient text-primary-foreground px-6 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">Scan Another <ArrowRight className="w-4 h-4" /></button>
             <span className="px-4 py-2 rounded-full bg-primary-glow text-primary text-sm font-semibold animate-fade-in">+240 Green Points Earned!</span>
           </div>
