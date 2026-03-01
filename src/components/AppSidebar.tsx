@@ -1,0 +1,106 @@
+import { NavLink, useLocation } from "react-router-dom";
+import {
+  LayoutDashboard, Camera, Leaf, TrendingUp, Building, Briefcase,
+  Star, Trophy, FileText, MapPin, Settings
+} from "lucide-react";
+
+const navSections = [
+  {
+    label: "MAIN",
+    items: [
+      { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+      { title: "Waste Scanner", icon: Camera, path: "/scan" },
+      { title: "Carbon Tracker", icon: Leaf, path: "/carbon" },
+    ],
+  },
+  {
+    label: "ANALYTICS",
+    items: [
+      { title: "Predictive AI", icon: TrendingUp, path: "/predict" },
+      { title: "Municipal Center", icon: Building, path: "/municipal" },
+      { title: "Business ESG", icon: Briefcase, path: "/business" },
+    ],
+  },
+  {
+    label: "COMMUNITY",
+    items: [
+      { title: "Rewards", icon: Star, path: "/rewards" },
+      { title: "Leaderboard", icon: Trophy, path: "/leaderboard" },
+      { title: "Reports", icon: FileText, path: "/reports" },
+    ],
+  },
+];
+
+export function AppSidebar() {
+  const location = useLocation();
+
+  return (
+    <aside className="flex flex-col w-60 h-screen bg-sidebar border-r border-sidebar-border shrink-0 overflow-y-auto">
+      {/* Logo */}
+      <div className="px-5 py-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#22C55E] via-[#16A34A] to-[#0F9B3E] flex items-center justify-center">
+            <Leaf className="w-4 h-4 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="font-display font-semibold text-base text-foreground leading-tight">WasteOS</h1>
+            <p className="text-[10px] text-muted-foreground leading-tight">Waste Intelligence Platform</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        {navSections.map((section) => (
+          <div key={section.label}>
+            <p className="px-3 mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-150 ${
+                      isActive
+                        ? "bg-primary-glow text-primary font-medium border-l-2 border-primary"
+                        : "text-sidebar-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    <span>{item.title}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* Bottom */}
+      <div className="p-3 border-t border-sidebar-border space-y-3">
+        <div className="card-premium p-3 rounded-xl">
+          <div className="flex items-center gap-2 text-xs">
+            <MapPin className="w-3.5 h-3.5 text-primary" />
+            <span className="font-medium text-foreground">Mumbai, Maharashtra</span>
+          </div>
+          <p className="mt-1 text-[10px] text-primary font-medium">Sustainability Score: 74</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5 px-2">
+            <div className="w-8 h-8 rounded-full bg-primary-glow flex items-center justify-center text-xs font-semibold text-primary">AM</div>
+            <div>
+              <p className="text-xs font-medium text-foreground">Arjun Mehta</p>
+              <p className="text-[10px] text-muted-foreground">Eco Champion</p>
+            </div>
+          </div>
+          <NavLink to="/settings" className={`p-2 rounded-xl transition-colors ${location.pathname === '/settings' ? 'bg-primary-glow text-primary' : 'text-muted-foreground hover:bg-secondary'}`}>
+            <Settings className="w-4 h-4" />
+          </NavLink>
+        </div>
+      </div>
+    </aside>
+  );
+}
