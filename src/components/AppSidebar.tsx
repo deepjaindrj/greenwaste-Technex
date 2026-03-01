@@ -62,18 +62,18 @@ export function AppSidebar() {
     localStorage.setItem('wasteos-portal', p);
   };
 
-  const displayName = profile?.full_name ?? 'Arjun Mehta';
+  const displayName = profile?.full_name ?? 'Deep Jain';
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase();
   const city = profile?.city ?? 'Indore';
 
   const navSections = portal === 'citizen' ? citizenNav : municipalNav;
 
   return (
-    <aside className="flex flex-col w-60 h-screen bg-sidebar border-r border-sidebar-border shrink-0 overflow-y-auto">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-sidebar-border">
+    <aside className="flex flex-col w-60 h-screen bg-sidebar border-r border-sidebar-border shrink-0">
+      {/* Logo — h-16 to match AppHeader height exactly */}
+      <div className="h-16 px-5 flex items-center border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#22C55E] via-[#16A34A] to-[#0F9B3E] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#22C55E] via-[#16A34A] to-[#0F9B3E] flex items-center justify-center shadow-sm">
             <Leaf className="w-4 h-4 text-primary-foreground" />
           </div>
           <div>

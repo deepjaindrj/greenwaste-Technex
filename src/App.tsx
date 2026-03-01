@@ -2,10 +2,16 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { CitizenProvider } from "@/hooks/use-citizen";
 import { AppLayout } from "./components/AppLayout";
-import Landing from "./pages/Landing";
+import LandingNavbar from "./landing/components/Navbar";
+import LandingFooter from "./landing/components/Footer";
+import SmoothScrollWrapper from "./landing/components/SmoothScrollWrapper";
+import LandingHome from "./landing/pages/Home";
+import LandingRecycling from "./landing/pages/Recycling";
+import LandingEPR from "./landing/pages/EPR";
+import LandingContact from "./landing/pages/Contact";
 import Dashboard from "./pages/Dashboard";
 import Scan from "./pages/Scan";
 import Carbon from "./pages/Carbon";
@@ -26,6 +32,16 @@ import TruckDriver from "./pages/TruckDriver";
 
 const queryClient = new QueryClient();
 
+const LandingLayout = () => (
+  <SmoothScrollWrapper>
+    <div className="min-h-screen bg-white">
+      <LandingNavbar />
+      <Outlet />
+      <LandingFooter />
+    </div>
+  </SmoothScrollWrapper>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <CitizenProvider>
@@ -34,7 +50,13 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            {/* New landing site routes */}
+            <Route element={<LandingLayout />}>
+              <Route path="/" element={<LandingHome />} />
+              <Route path="/recycling" element={<LandingRecycling />} />
+              <Route path="/epr" element={<LandingEPR />} />
+              <Route path="/contact" element={<LandingContact />} />
+            </Route>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/scan" element={<Scan />} />

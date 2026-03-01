@@ -128,7 +128,7 @@ export default function CarbonMarket() {
               </div>
               <div className="flex flex-col items-center py-2">
                 <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur border-[3px] border-white flex items-center justify-center text-xl font-display font-bold text-white mb-2">AM</div>
-                <p className="text-white font-display font-semibold text-lg">Arjun Mehta</p>
+                <p className="text-white font-display font-semibold text-lg">Deep Jain</p>
                 <p className="text-white/80 text-xs">Eco Champion 🏆</p>
               </div>
               <div className="w-full h-px bg-white/20" />

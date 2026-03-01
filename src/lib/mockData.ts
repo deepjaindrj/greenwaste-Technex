@@ -67,7 +67,7 @@ export const carbonData = {
 };
 
 export const rewardsData = {
-  user: { name: 'Arjun Mehta', tier: 'Green Champion 🌿', lifetime: 12450, monthly: 840, tierProgress: 72 },
+  user: { name: 'Deep Jain', tier: 'Green Champion 🌿', lifetime: 12450, monthly: 840, tierProgress: 72 },
   challenges: [
     { title: 'Recycle 10 items this week', progress: 7, total: 10, points: 240, daysLeft: 2, icon: 'Recycle' },
     { title: 'Zero Mixed Waste for 5 days', progress: 3, total: 5, points: 500, daysLeft: 4, icon: 'Flame' },
@@ -140,7 +140,7 @@ export const leaderboardData = [
   { rank: 2, name: 'Rahul Desai', society: 'EcoNest Society', city: 'Bhopal', points: 22150, trend: [35, 38, 42, 50, 55, 58, 64], badge: '🥈' },
   { rank: 3, name: 'Sneha Kulkarni', society: 'SunRise Tower', city: 'Indore', points: 19400, trend: [30, 35, 40, 42, 48, 52, 58], badge: '🥉' },
   { rank: 4, name: 'Vikram Joshi', society: 'Park View', city: 'Ujjain', points: 17650, trend: [28, 32, 38, 40, 44, 48, 53], badge: '' },
-  { rank: 5, name: 'Arjun Mehta', society: 'Harmony Heights', city: 'Indore', points: 12450, trend: [20, 25, 30, 35, 38, 42, 48], badge: '', isUser: true },
+  { rank: 5, name: 'Deep Jain', society: 'Harmony Heights', city: 'Indore', points: 12450, trend: [20, 25, 30, 35, 38, 42, 48], badge: '', isUser: true },
   { rank: 6, name: 'Meera Iyer', society: 'Lake Side Homes', city: 'Jabalpur', points: 11200, trend: [18, 22, 28, 32, 36, 38, 44], badge: '' },
   { rank: 7, name: 'Amit Patel', society: 'Royal Gardens', city: 'Gwalior', points: 10800, trend: [15, 20, 24, 28, 32, 36, 40], badge: '' },
   { rank: 8, name: 'Kavita Nair', society: 'Ocean Breeze', city: 'Indore', points: 9500, trend: [12, 18, 22, 26, 30, 34, 38], badge: '' },
