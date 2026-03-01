@@ -2,6 +2,7 @@
 // WasteOS — API Layer (Supabase-first, mock fallback)
 // All functions call Supabase; falls back to mockData when
 // VITE_SUPABASE_URL is not configured (local dev).
+// Scan/Chat routes call the local FastAPI backend at :8000.
 // ============================================================
 
 import { supabase } from './supabase'
@@ -12,6 +13,8 @@ import type {
   LeaderboardRow, WasteType, PickupStatus, EsgBuyerStatus,
 } from './database.types'
 
+const API_BASE = 'http://localhost:8000'
+
 const isMock =
   !import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.VITE_SUPABASE_URL.includes('YOUR_PROJECT_ID')
@@ -20,26 +23,93 @@ function err(e: unknown): never {
   throw e instanceof Error ? e : new Error(String(e))
 }
 
-// ── Scan page (unchanged behaviour) ──────────────────────────
+// ── Scan page ─────────────────────────────────────────────────
 
-export const analyzeWasteImage = async (_imageFile: File) => {
-  await new Promise(r => setTimeout(r, 2000))
-  const { scanResults } = await import('./mockData')
-  return scanResults
+export interface AnalyzeSuccessResponse {
+  status: 'success'
+  classification: {
+    category: string
+    confidence: number
+  }
+  insights: {
+    detected_items: string[]
+    disposal_method: string
+    environmental_impact: string
+    landfill_risk: string
+    user_advice: string
+  }
 }
 
-export const getChatResponse = async (message: string, _wasteContext?: object) => {
-  await new Promise(r => setTimeout(r, 1200))
-  const responses: Record<string, string> = {
-    default: "Based on the waste analysis, I recommend separating the PET bottles for recycling and disposing of the battery at your nearest e-waste collection center. The food waste can go into your green composting bin.",
-    recycle: "The PET bottle should be rinsed and placed in the blue recycling bin. In Indore, IMC collects recyclables on Tuesdays and Fridays. You can also drop them at the nearest dry waste collection center.",
-    center: "The nearest recycling center is at Vijay Nagar Collection Hub (2.3 km away). They accept plastics, metals, and e-waste. Open Mon-Sat, 9am-6pm.",
-    savings: "By recycling these items instead of sending to landfill, you'll save approximately 0.8 kg CO₂. That's equivalent to not driving 3.2 km in a car!",
+export interface AnalyzeRejectedResponse {
+  status: 'rejected'
+  message: string
+  reason: string
+}
+
+export type AnalyzeResponse = AnalyzeSuccessResponse | AnalyzeRejectedResponse
+
+export const analyzeWasteImage = async (imageFile: File): Promise<AnalyzeResponse> => {
+  const formData = new FormData()
+  formData.append('file', imageFile)
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 60000)
+
+  try {
+    const response = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+    const data = await response.json()
+
+    if (!response.ok) {
+      if (response.status === 400 && data.status === 'rejected') {
+        return data as AnalyzeRejectedResponse
+      }
+      throw new Error(data.detail || data.message || `Server error: ${response.status}`)
+    }
+
+    return data as AnalyzeSuccessResponse
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('Request timed out. Please try again.')
+    throw e
   }
-  const key = message.toLowerCase().includes('recycle') ? 'recycle'
-    : message.toLowerCase().includes('center') ? 'center'
-    : message.toLowerCase().includes('saving') ? 'savings' : 'default'
-  return { message: responses[key] }
+}
+
+export const getChatResponse = async (
+  message: string,
+  imageB64: string,
+  mimeType: string,
+  classification: { category: string; confidence: number },
+  insights: AnalyzeSuccessResponse['insights'],
+  history: { role: string; text: string }[],
+): Promise<{ message: string }> => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+  try {
+    const response = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, image_b64: imageB64, mime_type: mimeType, classification, insights, history }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+    const data = await response.json()
+
+    if (!response.ok) throw new Error(data.detail || 'Chat request failed')
+
+    return { message: data.message }
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') throw new Error('Chat request timed out.')
+    throw e
+  }
 }
 
 // ── Legacy stubs (kept for existing page imports) ─────────────
