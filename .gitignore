@@ -28,3 +28,6 @@ waste_yolo26seg_best.pt
 backend/.env
 backend/__pycache__/
 backend/uploads/
+
+waste_yolo26seg_best.pt
+best_model.keras

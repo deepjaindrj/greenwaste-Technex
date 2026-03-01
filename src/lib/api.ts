@@ -35,6 +35,14 @@ export interface DetectedObject {
   bbox: number[]
 }
 
+export interface GroqObject {
+  label: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
 export interface AnalyzeSuccessResponse {
   status: 'success'
   analysis_source: 'yolo' | 'ml_fallback'
@@ -51,6 +59,9 @@ export interface AnalyzeSuccessResponse {
     landfill_risk: string
     user_advice: string
   } | null
+  image_width: number
+  image_height: number
+  groq_objects: GroqObject[]
 }
 
 export interface AnalyzeRejectedResponse {

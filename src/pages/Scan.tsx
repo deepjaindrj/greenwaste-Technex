@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Camera, Upload, Cpu, FileText, Check, Loader2, Send, Download, Share2, ArrowRight, X, RefreshCw, AlertTriangle } from "lucide-react";
-import { analyzeWasteImage, AnalyzeSuccessResponse, getChatResponse } from "@/lib/api";
+import { analyzeWasteImage, AnalyzeSuccessResponse, GroqObject, getChatResponse } from "@/lib/api";
 
 type Step = 'capture' | 'camera' | 'analyzing' | 'results' | 'rejected';
 
@@ -34,6 +34,27 @@ export default function Scan() {
   const [streamingIdx, setStreamingIdx] = useState<number | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgLayout, setImgLayout] = useState({ offsetX: 0, offsetY: 0, scale: 1 });
+  const [bboxesVisible, setBboxesVisible] = useState(false);
+  const [hoveredBbox, setHoveredBbox] = useState<number | null>(null);
+  const [groqObjsVisible, setGroqObjsVisible] = useState(false);
+  const [hoveredGroq, setHoveredGroq] = useState<number | null>(null);
+
+  // Compute displayed image layout for bbox positioning
+  const handleResultImageLoad = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || !analysisResult) return;
+    const { naturalWidth, naturalHeight, clientWidth, clientHeight } = img;
+    const scale = Math.min(clientWidth / naturalWidth, clientHeight / naturalHeight);
+    const actualW = naturalWidth * scale;
+    const actualH = naturalHeight * scale;
+    const offsetX = (clientWidth - actualW) / 2;
+    const offsetY = (clientHeight - actualH) / 2;
+    setImgLayout({ offsetX, offsetY, scale });
+    setTimeout(() => setBboxesVisible(true), 600);
+    setTimeout(() => setGroqObjsVisible(true), 900);
+  }, [analysisResult]);
 
   // Typewriter effect for AI messages
   useEffect(() => {
@@ -250,6 +271,11 @@ export default function Scan() {
     setImageMime("image/jpeg");
     setProgress(0);
     setCurrentAnalysisStage(0);
+    setBboxesVisible(false);
+    setHoveredBbox(null);
+    setGroqObjsVisible(false);
+    setHoveredGroq(null);
+    setImgLayout({ offsetX: 0, offsetY: 0, scale: 1 });
   }, []);
 
   const analysisSteps = [
@@ -337,14 +363,7 @@ export default function Scan() {
               <X className="w-4 h-4" /> Cancel
             </button>
           </div>
-          <style>{`
-            @keyframes cameraScanner {
-              0% { top: 8%; opacity: 0; }
-              10% { opacity: 1; }
-              90% { opacity: 1; }
-              100% { top: 92%; opacity: 0; }
-            }
-          `}</style>
+
         </div>
       )}
 
@@ -392,7 +411,48 @@ export default function Scan() {
       {step === 'analyzing' && (
         <div className="card-premium p-8">
           <div className="grid md:grid-cols-2 gap-8">
-            {imagePreview && <img src={imagePreview} alt="Analyzing" className="rounded-2xl w-full object-cover max-h-72" />}
+            {imagePreview && (
+        <div className="relative rounded-2xl overflow-hidden flex-shrink-0">
+          <img src={imagePreview} alt="Analyzing" className="rounded-2xl w-full object-cover max-h-72" />
+          {/* ── SCAN ANIMATION OVERLAY ── */}
+          <div className="absolute inset-0 rounded-2xl overflow-hidden">
+            {/* Dim layer */}
+            <div className="absolute inset-0 bg-black/35 rounded-2xl" />
+            {/* Sweep scan line — starts at top:0, translateY sweeps to bottom */}
+            <div className="absolute left-0 right-0 top-0 h-0.5" style={{ background: 'linear-gradient(90deg, transparent 0%, #22C55E 15%, #4ADE80 50%, #22C55E 85%, transparent 100%)', boxShadow: '0 0 18px 4px rgba(34,197,94,0.7)', animation: 'scanLineAnim 2.2s linear infinite' }} />
+            {/* Trailing glow, also starts at top:0 */}
+            <div className="absolute left-0 right-0 top-0" style={{ height: '60px', background: 'linear-gradient(180deg, rgba(34,197,94,0.12) 0%, transparent 100%)', animation: 'scanTrailAnim 2.2s linear infinite' }} />
+            {/* Corner brackets */}
+            <div className="absolute top-3 left-3 w-7 h-7 border-t-2 border-l-2 border-emerald-400 rounded-tl" style={{ animation: 'bracketPulse 2s ease-in-out infinite', boxShadow: '-2px -2px 8px rgba(34,197,94,0.4)' }} />
+            <div className="absolute top-3 right-3 w-7 h-7 border-t-2 border-r-2 border-emerald-400 rounded-tr" style={{ animation: 'bracketPulse 2s ease-in-out infinite 0.3s', boxShadow: '2px -2px 8px rgba(34,197,94,0.4)' }} />
+            <div className="absolute bottom-3 left-3 w-7 h-7 border-b-2 border-l-2 border-emerald-400 rounded-bl" style={{ animation: 'bracketPulse 2s ease-in-out infinite 0.6s', boxShadow: '-2px 2px 8px rgba(34,197,94,0.4)' }} />
+            <div className="absolute bottom-3 right-3 w-7 h-7 border-b-2 border-r-2 border-emerald-400 rounded-br" style={{ animation: 'bracketPulse 2s ease-in-out infinite 0.9s', boxShadow: '2px 2px 8px rgba(34,197,94,0.4)' }} />
+            {/* Grid overlay */}
+            <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(34,197,94,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(34,197,94,0.06) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+            {/* Central crosshair */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 w-12 h-12 rounded-full border border-emerald-400/30" style={{ animation: 'pingRing 1.8s ease-out infinite' }} />
+                <div className="absolute inset-0 w-12 h-12 rounded-full border border-emerald-400/20" style={{ animation: 'pingRing 1.8s ease-out infinite 0.6s' }} />
+                <div className="w-12 h-12 rounded-full border border-emerald-400/50 flex items-center justify-center">
+                  <div className="w-3 h-3 rounded-full bg-emerald-400" style={{ animation: 'bracketPulse 1s ease-in-out infinite' }} />
+                </div>
+              </div>
+            </div>
+            {/* Scan status badge */}
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm border border-emerald-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] text-emerald-300 font-mono tracking-widest">YOLO SCANNING</span>
+            </div>
+            {/* Bottom readout */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-black/70 backdrop-blur-sm border border-white/10">
+              <span className="text-[9px] text-emerald-300/80 font-mono">{progress}%</span>
+              <div className="w-16 h-0.5 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-emerald-400 transition-all" style={{ width: `${progress}%` }} /></div>
+              <span className="text-[9px] text-white/40 font-mono">v26 SEG</span>
+            </div>
+          </div>
+        </div>
+      )}
             <div className="space-y-4">
               <h3 className="font-display font-semibold text-foreground">Analyzing waste...</h3>
               {analysisSteps.map((s, i) => (
@@ -446,7 +506,54 @@ export default function Scan() {
         <div className="space-y-6">
           <div className="card-premium p-5">
             <div className="relative rounded-2xl overflow-hidden bg-foreground/5 h-72 flex items-center justify-center">
-              {imagePreview ? <img src={imagePreview} alt="Analyzed" className="w-full h-full object-cover" /> : <div className="text-muted-foreground text-sm">Analysis Complete</div>}
+              {imagePreview
+                ? <img ref={imgRef} src={imagePreview} alt="Analyzed" className="w-full h-full" style={{ objectFit: 'contain' }} onLoad={handleResultImageLoad} />
+                : <div className="text-muted-foreground text-sm">Analysis Complete</div>
+              }
+              {/* ── BOUNDING BOX OVERLAYS ── */}
+              {bboxesVisible && analysisResult.detected_objects.map((obj, i) => {
+                const [x1, y1, x2, y2] = obj.bbox;
+                const left = imgLayout.offsetX + x1 * imgLayout.scale;
+                const top = imgLayout.offsetY + y1 * imgLayout.scale;
+                const width = (x2 - x1) * imgLayout.scale;
+                const height = (y2 - y1) * imgLayout.scale;
+                const BBOX_COLORS = ['#22C55E','#3B82F6','#F59E0B','#EC4899','#8B5CF6','#EF4444','#06B6D4','#F97316'];
+                const color = BBOX_COLORS[i % BBOX_COLORS.length];
+                const isHovered = hoveredBbox === i;
+                return (
+                  <div
+                    key={i}
+                    className="absolute cursor-pointer"
+                    style={{ left, top, width, height, animation: `bboxAppear 0.45s cubic-bezier(0.34,1.56,0.64,1) ${i * 0.18}s both` }}
+                    onMouseEnter={() => setHoveredBbox(i)}
+                    onMouseLeave={() => setHoveredBbox(null)}
+                  >
+                    {/* Main border */}
+                    <div className="absolute inset-0 rounded-sm transition-all duration-200" style={{ border: `2px solid ${color}`, boxShadow: isHovered ? `0 0 20px ${color}90, 0 0 40px ${color}40, inset 0 0 20px ${color}15` : `0 0 10px ${color}60, inset 0 0 8px ${color}08` }} />
+                    {/* Corner dots */}
+                    {[['top-0 left-0','-translate-x-1/2 -translate-y-1/2'],['top-0 right-0','translate-x-1/2 -translate-y-1/2'],['bottom-0 left-0','-translate-x-1/2 translate-y-1/2'],['bottom-0 right-0','translate-x-1/2 translate-y-1/2']].map(([pos, trans], di) => (
+                      <div key={di} className={`absolute ${pos} ${trans} w-2 h-2 rounded-full`} style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}`, animation: `bracketPulse 1.5s ease-in-out infinite ${di * 0.15}s` }} />
+                    ))}
+                    {/* Confidence fill overlay */}
+                    <div className="absolute inset-0 rounded-sm transition-opacity duration-200" style={{ background: `linear-gradient(135deg, ${color}12 0%, transparent 60%)`, opacity: isHovered ? 1 : 0.6 }} />
+                    {/* Label badge */}
+                    <div
+                      className="absolute flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap"
+                      style={{ top: top < 30 ? 'calc(100% + 4px)' : '-22px', left: '0', backgroundColor: color, boxShadow: `0 2px 8px ${color}60`, animation: `labelSlide 0.3s ease-out ${i * 0.18 + 0.25}s both`, opacity: 0 }}
+                    >
+                      <span>{obj.label.replace(/_/g, ' ')}</span>
+                      <span className="opacity-80 font-normal">{(obj.confidence * 100).toFixed(0)}%</span>
+                    </div>
+                    {/* Hover tooltip */}
+                    {isHovered && (
+                      <div className="absolute z-20 px-2.5 py-1.5 rounded-lg text-[10px] text-white whitespace-nowrap" style={{ bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgba(0,0,0,0.85)', border: `1px solid ${color}50`, backdropFilter: 'blur(8px)' }}>
+                        <div className="font-semibold">{obj.label.replace(/_/g, ' ')}</div>
+                        <div className="text-white/60">Confidence: {(obj.confidence * 100).toFixed(1)}%</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div className="absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: CATEGORY_COLORS[analysisResult.final_category] || "#6B7280" }}>
                 {analysisResult.final_category}
               </div>
@@ -456,10 +563,75 @@ export default function Scan() {
                 </span>
                 <span className="text-[10px] bg-card/80 backdrop-blur px-2 py-1 rounded-full text-muted-foreground font-mono">WasteOS YOLO v26</span>
               </div>
+              {/* ── GROQ VISUAL MARKERS ── */}
+              {groqObjsVisible && (analysisResult.groq_objects || []).map((obj: GroqObject, i: number) => {
+                const left = imgLayout.offsetX + obj.x1 * (analysisResult.image_width || 1) * imgLayout.scale;
+                const top  = imgLayout.offsetY + obj.y1 * (analysisResult.image_height || 1) * imgLayout.scale;
+                const width  = (obj.x2 - obj.x1) * (analysisResult.image_width || 1) * imgLayout.scale;
+                const height = (obj.y2 - obj.y1) * (analysisResult.image_height || 1) * imgLayout.scale;
+                const GROQ_COLORS = ['#06B6D4','#A855F7','#F59E0B','#EC4899','#22C55E','#EF4444','#3B82F6','#F97316'];
+                const color = GROQ_COLORS[i % GROQ_COLORS.length];
+                const isMostlyDuplicate = analysisResult.detected_objects.some(d => {
+                  const [dx1, dy1, dx2, dy2] = d.bbox;
+                  const overlapX = Math.max(0, Math.min(obj.x2 * (analysisResult.image_width || 1), dx2) - Math.max(obj.x1 * (analysisResult.image_width || 1), dx1));
+                  const overlapY = Math.max(0, Math.min(obj.y2 * (analysisResult.image_height || 1), dy2) - Math.max(obj.y1 * (analysisResult.image_height || 1), dy1));
+                  const groqArea = width * height / (imgLayout.scale * imgLayout.scale);
+                  return groqArea > 0 && (overlapX * overlapY) / groqArea > 0.5;
+                });
+                if (isMostlyDuplicate) return null;
+                const isHov = hoveredGroq === i;
+                const cx = left + width / 2;
+                const cy = top + height / 2;
+                return (
+                  <div key={`grq-${i}`} className="absolute pointer-events-none" style={{ left: 0, top: 0, width: '100%', height: '100%' }}>
+                    {/* Dashed groq box */}
+                    <div
+                      className="absolute cursor-pointer pointer-events-auto"
+                      style={{ left, top, width, height, border: `1.5px dashed ${color}`, borderRadius: 4, boxShadow: isHov ? `0 0 16px ${color}80` : `0 0 6px ${color}40`, animation: `bboxAppear 0.5s cubic-bezier(0.34,1.56,0.64,1) ${i * 0.14 + 0.1}s both`, background: isHov ? `${color}12` : 'transparent', transition: 'box-shadow 0.2s, background 0.2s' }}
+                      onMouseEnter={() => setHoveredGroq(i)}
+                      onMouseLeave={() => setHoveredGroq(null)}
+                    />
+                    {/* Pin marker at center */}
+                    <div
+                      className="absolute cursor-pointer pointer-events-auto flex items-center justify-center"
+                      style={{ left: cx - 10, top: cy - 10, width: 20, height: 20, animation: `pinDrop 0.5s cubic-bezier(0.34,1.56,0.64,1) ${i * 0.14 + 0.25}s both` }}
+                      onMouseEnter={() => setHoveredGroq(i)}
+                      onMouseLeave={() => setHoveredGroq(null)}
+                    >
+                      <div className="w-3 h-3 rounded-full border-2 border-white" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}, 0 0 20px ${color}60` }} />
+                    </div>
+                    {/* Label */}
+                    <div
+                      className="absolute px-2 py-0.5 rounded text-[10px] font-semibold text-white whitespace-nowrap pointer-events-none"
+                      style={{ left, top: top > 28 ? top - 22 : top + height + 4, backgroundColor: `${color}dd`, boxShadow: `0 2px 8px ${color}50`, animation: `labelSlide 0.3s ease-out ${i * 0.14 + 0.35}s both`, opacity: 0 }}
+                    >
+                      ✦ {obj.label}
+                    </div>
+                    {/* Hover tooltip */}
+                    {isHov && (
+                      <div className="absolute z-30 px-2.5 py-1.5 rounded-lg text-[10px] text-white whitespace-nowrap pointer-events-none" style={{ left: cx - 40, top: top > 50 ? top - 48 : top + height + 6, backgroundColor: 'rgba(0,0,0,0.9)', border: `1px solid ${color}60`, backdropFilter: 'blur(8px)' }}>
+                        <div className="font-semibold text-white">{obj.label}</div>
+                        <div className="text-white/50 text-[9px]">WasteOS AI Vision</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {/* Object count badge */}
-              {analysisResult.detected_objects.length > 0 && (
-                <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-medium">
-                  {analysisResult.detected_objects.length} object{analysisResult.detected_objects.length > 1 ? 's' : ''} detected
+              {(analysisResult.detected_objects.length > 0 || (analysisResult.groq_objects || []).length > 0) && (
+                <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                  {analysisResult.detected_objects.length > 0 && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm border border-emerald-500/30 text-white text-[10px] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      {analysisResult.detected_objects.length} objects
+                    </div>
+                  )}
+                  {(analysisResult.groq_objects || []).length > 0 && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-sm border border-cyan-500/30 text-white text-[10px] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                      {(analysisResult.groq_objects || []).length} AI markers
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -572,6 +744,49 @@ export default function Scan() {
           </div>
         </div>
       )}
+
+      {/* ── GLOBAL ANIMATION KEYFRAMES (always mounted) ── */}
+      <style>{`
+        @keyframes cameraScanner {
+          0% { top: 8%; opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { top: 92%; opacity: 0; }
+        }
+        @keyframes scanLineAnim {
+          0%   { transform: translateY(0);    opacity: 0; }
+          3%   { opacity: 1; }
+          97%  { opacity: 1; }
+          100% { transform: translateY(500px); opacity: 0; }
+        }
+        @keyframes scanTrailAnim {
+          0%   { transform: translateY(-60px); opacity: 0; }
+          3%   { opacity: 1; }
+          97%  { opacity: 1; }
+          100% { transform: translateY(500px); opacity: 0; }
+        }
+        @keyframes bracketPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        @keyframes pingRing {
+          0%   { transform: scale(0.95); opacity: 0.6; }
+          100% { transform: scale(2.2);  opacity: 0; }
+        }
+        @keyframes bboxAppear {
+          0%   { transform: scale(0.75); opacity: 0; }
+          100% { transform: scale(1);    opacity: 1; }
+        }
+        @keyframes labelSlide {
+          0%   { transform: translateY(6px); opacity: 0; }
+          100% { transform: translateY(0);   opacity: 1; }
+        }
+        @keyframes pinDrop {
+          0%   { transform: scale(0) translateY(-8px); opacity: 0; }
+          60%  { transform: scale(1.3) translateY(2px); opacity: 1; }
+          100% { transform: scale(1) translateY(0);    opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }

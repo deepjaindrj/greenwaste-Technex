@@ -198,6 +198,30 @@ You are a safety filter, not a chat assistant.
 Never describe the image beyond the short reason field."""
 
 
+# ══════════════════════════════════════════════════════════════
+# GROQ VISUAL LOCALIZATION PROMPT
+# ══════════════════════════════════════════════════════════════
+GROQ_LOCALIZE_PROMPT = """You are a computer vision object localization AI.
+
+Your task: identify up to 8 distinct waste or garbage objects visible in the image and return their approximate positions as bounding boxes in normalized coordinates (0.0 to 1.0, relative to image width/height).
+
+Return ONLY strict JSON like this:
+{
+  "objects": [
+    {"label": "plastic bottle", "x1": 0.10, "y1": 0.20, "x2": 0.35, "y2": 0.70},
+    {"label": "cardboard box", "x1": 0.50, "y1": 0.10, "x2": 0.90, "y2": 0.60}
+  ]
+}
+
+Rules:
+- x1, y1 = top-left corner (0.0 to 1.0)
+- x2, y2 = bottom-right corner (0.0 to 1.0)
+- Labels must be short, human-readable (2-4 words max)
+- Only include objects you can clearly see
+- Maximum 8 objects
+- If no objects visible, return {"objects": []}
+- NO explanation, NO markdown, ONLY JSON"""
+
 STAGE3_SYSTEM_PROMPT = """You are an environmental sustainability analysis AI.
 
 The image has already been confirmed as garbage.
@@ -497,6 +521,10 @@ async def analyze_waste(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(file_bytes)
 
+        # --- Get image dimensions ---
+        img_pil = Image.open(BytesIO(file_bytes))
+        image_width, image_height = img_pil.size
+
         # --- Base64 encode ---
         image_b64 = base64.b64encode(file_bytes).decode("utf-8")
         mime_type = file.content_type or "image/jpeg"
@@ -583,6 +611,28 @@ async def analyze_waste(file: UploadFile = File(...)):
         except Exception:
             insights = None
 
+        # ═══════════ STAGE 4: Groq Visual Object Localization ═══════════
+        groq_objects = []
+        try:
+            localize_result = await call_groq_vision(
+                system_prompt=GROQ_LOCALIZE_PROMPT,
+                user_text="Identify all waste objects in this image with their approximate bounding box positions.",
+                image_b64=image_b64,
+                mime_type=mime_type,
+            )
+            raw_objs = localize_result.get("objects", [])
+            for obj in raw_objs:
+                if all(k in obj for k in ("label", "x1", "y1", "x2", "y2")):
+                    groq_objects.append({
+                        "label": str(obj["label"]),
+                        "x1": max(0.0, min(1.0, float(obj["x1"]))),
+                        "y1": max(0.0, min(1.0, float(obj["y1"]))),
+                        "x2": max(0.0, min(1.0, float(obj["x2"]))),
+                        "y2": max(0.0, min(1.0, float(obj["y2"]))),
+                    })
+        except Exception:
+            groq_objects = []
+
         # ═══════════ Final Response ═══════════
         return JSONResponse(
             status_code=200,
@@ -593,6 +643,9 @@ async def analyze_waste(file: UploadFile = File(...)):
                 "detected_objects": detected_objects,
                 "ml_support": ml_support,
                 "insights": insights,
+                "image_width": image_width,
+                "image_height": image_height,
+                "groq_objects": groq_objects,
             },
         )
 
